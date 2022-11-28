@@ -1,0 +1,12 @@
+__pycache__
+.idea
+/models*/
+embeddings/
+/bert_out
+/berts
+/evals
+/word2vec
+/metrics.tsv*
+converted/
+converted_punct/
+*.swp
