@@ -6,7 +6,8 @@ allennlp-light==1.0.0
 
 # other
 conllu==4.5.2
-black-22.10.0
+black==22.10.0
+isort==5.10.1
 
 # CLI stuff
 click==8.1.3
