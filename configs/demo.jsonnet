@@ -1,7 +1,7 @@
 ##################
 # Model settings #
 ##################
-local pretrained_model = "roberta-base";
+local pretrained_model = "distilbert-base-cased";
 
 ####################
 # Trainer settings #
@@ -12,7 +12,7 @@ local training_steps = 4000;  # total number of optimization steps to train for
 local validate_every = 400;  # how often to validate and save checkpoints
 
 # This is the batch size per GPU, ignoring gradient accumulation:
-local batch_size = 8;
+local batch_size = 64;
 
 local amp = false;  # use PyTorch's native automatic mixed precision
 
@@ -65,6 +65,10 @@ local val_dataloader = {
             test_conllu: "data/en_gum-ud-test.conllu",
             tokenizer: { pretrained_model_name_or_path: pretrained_model }
         },
+        label_count: {
+            type: "label_count",
+            dataset: { type: "ref", ref: "stype_instances" }
+        },
         trained_model: {
             type: "torch::train",
             model: {
@@ -72,7 +76,7 @@ local val_dataloader = {
                 type: "demo_auto_model_wrapper::from_config",
                 config: {
                     pretrained_model_name_or_path: pretrained_model,
-                    num_labels: 11,
+                    num_labels: { type: "ref", ref: "label_count" },
                     problem_type: "single_label_classification"
                 },
             },

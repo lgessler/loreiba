@@ -1,44 +1,55 @@
 import time
 from functools import partial
-from torchmetrics import Accuracy
+from typing import Any, Dict, List
 
-import datasets
 import conllu
-from typing import Dict, List, Any
-
-import torch
-from conllu import TokenList
-from tango import Step, JsonFormat
-from tango.common import Tqdm
+import datasets
 import pandas as pd
-
-from tango import Step
+import torch
+from tango import JsonFormat, Step
+from tango.common import Tqdm
+from tango.common.dataset_dict import DatasetDict
 from tango.integrations.datasets import DatasetsFormat
 from tango.integrations.torch import EvalCallback, Model
+from tango.integrations.transformers import Config, DataCollator
 from tango.integrations.transformers.tokenizer import Tokenizer
-from tango.common.dataset_dict import DatasetDict, DatasetDictBase
-from tango.integrations.transformers import DataCollator, Config
-
+from torchmetrics import Accuracy
 from transformers import AutoModelForSequenceClassification
 from transformers.models.auto.auto_factory import _get_model_class
 from transformers.models.distilbert.modeling_distilbert import DistilBertForSequenceClassification
 
 
+def conllu_to_dfs(conllu_path):
+    def read_conllu(path):
+        with open(path, "r") as f:
+            return conllu.parse(f.read())
 
-def read_conllu(path):
-    with open(path, "r") as f:
-        return conllu.parse(f.read())
+    def sentence_to_stype_instance(sentence: conllu.TokenList) -> Dict[str, Any]:
+        stype = sentence.metadata["s_type"]
+        text = sentence.metadata["text"]
+        return {"label": stype, "text": text}
 
-
-def sentence_to_stype_instance(sentence: TokenList) -> Dict[str, Any]:
-    stype = sentence.metadata["s_type"]
-    text = sentence.metadata["text"]
-    return {"label": stype, "text": text}
-
-
-def conllu_to_stype_dataframe(conllu_path):
     records = [sentence_to_stype_instance(s) for s in read_conllu(conllu_path)]
     return pd.DataFrame.from_records(records)
+
+
+def dfs_to_datasets(df, labels, tokenizer):
+    tokenizer_records = [tokenizer(x) for x in df["text"]]
+    df['input_ids'] = [x['input_ids'] for x in tokenizer_records]
+    df['attention_mask'] = [x['input_ids'] for x in tokenizer_records]
+    del df['text']
+    dataset = datasets.Dataset.from_pandas(
+        df,
+        features=datasets.Features(
+            {
+                "label": datasets.ClassLabel(names=labels),
+                "input_ids": datasets.Sequence(datasets.Value(dtype="int32")),
+                "attention_mask": datasets.Sequence(datasets.Value(dtype="int32")),
+            }
+        ),
+    )
+
+    return dataset
 
 
 @Model.register("demo_auto_model_wrapper::from_config", constructor="from_config")
@@ -56,12 +67,11 @@ class AutoModelForSequenceClassificationWrapper(AutoModelForSequenceClassificati
                 preds = output.logits.max(1).indices.to(model.device)
                 labels = labels.to(model.device)
                 output = dict(output)
-                output['accuracy'] = acc(preds, labels)
+                output["accuracy"] = acc(preds, labels)
             return output
 
         model.forward = forward.__get__(model)
         return model
-
 
 
 @Step.register("construct_stype_instances")
@@ -76,29 +86,22 @@ class ConstructStypeInstances(Step):
         dev_conllu: str,
         test_conllu: str,
         tokenizer: Tokenizer,
-        field_to_tokenize: str = "text",
         num_workers: int = 1,
     ) -> DatasetDict:
-        label_mapping = {}
+        dfs = {k: conllu_to_dfs(p) for k, p in zip(["train", "dev", "test"], [train_conllu, dev_conllu, test_conllu])}
+        labels = dfs["train"].label.unique().tolist()
+        dataset = datasets.DatasetDict({k: dfs_to_datasets(df, labels, tokenizer) for k, df in dfs.items()})
 
-        def xform_fn(example: Dict[str, Any]) -> Dict[str, Any]:
-            tokenizer_output = tokenizer(example[field_to_tokenize])
-            output = {"label": label_mapping[example['label']], **tokenizer_output}
-            return output
+        self.logger.info(dataset["train"][0])
 
-        raw_dataset = datasets.DatasetDict(
-            {
-                "train": datasets.Dataset.from_pandas(conllu_to_stype_dataframe(train_conllu)),
-                "dev": datasets.Dataset.from_pandas(conllu_to_stype_dataframe(dev_conllu)),
-                "test": datasets.Dataset.from_pandas(conllu_to_stype_dataframe(test_conllu)),
-            }
-        )
+        return dataset.with_format("torch")
 
-        labels = set(i['label'] for i in raw_dataset['dev'])
-        for i, v in enumerate(sorted(list(labels))):
-            label_mapping[v] = i
-        print(label_mapping)
 
-        processed_dataset = raw_dataset.map(xform_fn, batched=False, num_proc=num_workers, with_indices=False, remove_columns=["text"])
-        self.logger.info(processed_dataset["train"][0])
-        return processed_dataset
+@Step.register("label_count")
+class LabelCount(Step):
+    DETERMINISTIC = True
+    CACHEABLE = True
+    FORMAT = JsonFormat()
+
+    def run(self, dataset: DatasetDict):
+        return len(dataset["train"].unique("label"))
