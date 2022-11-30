@@ -35,9 +35,9 @@ def conllu_to_dfs(conllu_path):
 
 def dfs_to_datasets(df, labels, tokenizer):
     tokenizer_records = [tokenizer(x) for x in df["text"]]
-    df['input_ids'] = [x['input_ids'] for x in tokenizer_records]
-    df['attention_mask'] = [x['input_ids'] for x in tokenizer_records]
-    del df['text']
+    df["input_ids"] = [x["input_ids"] for x in tokenizer_records]
+    df["attention_mask"] = [x["input_ids"] for x in tokenizer_records]
+    del df["text"]
     dataset = datasets.Dataset.from_pandas(
         df,
         features=datasets.Features(
