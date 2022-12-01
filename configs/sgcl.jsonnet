@@ -56,16 +56,32 @@ local val_dataloader = {
     collate_fn: collate_fn
 };
 
+local language = "wolof";
+local language_code_index = {
+    "coptic": "cop",
+    "greek": "grc",
+    "indonesian": "id",
+    "maltese": "mt",
+    "tamil": "ta",
+    "uyghur": "ug",
+    "wolof": "wo",
+};
+
 {
     steps: {
-        raw_token_only_data: {
+        raw_text_data: {
             type: "loreiba.data::read_text_only_conllu",
-            shortcut: "wolof",
+            shortcut: language,
         },
         raw_treebank_data: {
             type: "loreiba.data::read_ud_treebank",
-            shortcut: "wolof",
-            tag: "r2.11"
+            shortcut: language,
+            tag: "r2.11"  // Use UD treebanks from release 2.11
+        },
+        parsed_text_data: {
+            type: "loreiba.stanza::stanza_parse_dataset",
+            dataset: { "type": "ref", "ref": "raw_text_data" },
+            language_code: language_code_index[language],
         }
         //stype_instances: {
         //    type: "construct_stype_instances",
