@@ -1,5 +1,5 @@
 import datasets
-import more_itertools
+import more_itertools as mit
 import stanza
 from datasets import ClassLabel, Dataset, DatasetDict, Sequence, Value
 from tango import Step
@@ -26,6 +26,7 @@ class StanzaParseDataset(Step):
             "use_gpu": True,
             "logging_level": "INFO",
             "tokenize_pretokenized": not allow_retokenization,
+            "tokenize_no_spplit": True,  # never allow sentence resegmentation
         }
         pipeline = stanza.Pipeline(**config)
 
@@ -84,7 +85,7 @@ class StanzaParseDataset(Step):
 
         for split, data in dataset.items():
             space_separated = [" ".join(ts) for ts in data["tokens"]]
-            chunks = list(more_itertools.chunked(space_separated, batch_size))
+            chunks = list(mit.chunked(space_separated, batch_size))
 
             outputs = []
             for chunk in Tqdm.tqdm(chunks, desc=f"Parsing split {split}..."):
