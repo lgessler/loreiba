@@ -1,13 +1,17 @@
 import os
+import random
 from pathlib import Path
 from typing import Literal, Optional
 
 import conllu
 import datasets
+import more_itertools as mit
 import requests
-from datasets import ClassLabel, DatasetDict, Sequence, Value
+import stanza
+from datasets import ClassLabel, Dataset, DatasetDict, Sequence, Value
 from github import Github
 from tango import Step
+from tango.common import Tqdm
 from tango.integrations.datasets import DatasetsFormat
 from tango.integrations.transformers import Tokenizer
 
@@ -30,13 +34,45 @@ class ReadTextOnlyConllu(Step):
 
     def run(
         self,
+        stanza_retokenize: bool = False,
+        stanza_language_code: Optional[str] = None,
         shortcut: Optional[str] = None,
         conllu_path_train: Optional[str] = None,
         conllu_path_dev: Optional[str] = None,
     ) -> DatasetDict:
+        def retokenize(sentences):
+            config = {
+                "processors": "tokenize,mwt",
+                "lang": stanza_language_code,
+                "use_gpu": True,
+                "logging_level": "INFO",
+                "tokenize_pretokenized": False,
+                "tokenize_no_ssplit": True,
+            }
+            pipeline = stanza.Pipeline(**config)
+            batch_size = 256
+
+            space_separated = [" ".join(ts) for ts in sentences]
+            chunks = list(mit.chunked(space_separated, batch_size))[:5]  # TODO deleteme
+
+            outputs = []
+            for chunk in Tqdm.tqdm(chunks, desc=f"Retokenizing with Stanza..."):
+                output = pipeline("\n\n".join(chunk))
+                for sentence in output.sentences:
+                    s = sentence.to_dict()
+                    retokenized = [t["text"] for t in s]
+                    outputs.append(retokenized)
+            for old, new in zip(sentences, outputs):
+                if len(old) != len(new):
+                    self.logger.debug(f"Retokenized sentence from {len(old)} to {len(new)}:\n\t{old}\n\t{new}\n")
+            return outputs
+
         def read_conllu(path):
             with open(path, "r") as f:
-                return conllu.parse(f.read())
+                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())]
+                if stanza_retokenize:
+                    sentences = retokenize(sentences)
+                return sentences
 
         if shortcut is not None:
             if shortcut not in ReadTextOnlyConllu.PATH_MAP:
@@ -67,11 +103,11 @@ class ReadTextOnlyConllu(Step):
         )
 
         train_dataset = datasets.Dataset.from_list(
-            [{"tokens": [t["form"] for t in s]} for d in train_docs for s in d],
+            [{"tokens": s} for d in train_docs for s in d],
             features=datasets.Features({"tokens": datasets.Sequence(datasets.Value(dtype="string"))}),
         )
         dev_dataset = datasets.Dataset.from_list(
-            [{"tokens": [t["form"] for t in s]} for d in dev_docs for s in d],
+            [{"tokens": s} for d in dev_docs for s in d],
             features=datasets.Features({"tokens": datasets.Sequence(datasets.Value(dtype="string"))}),
         )
 
@@ -79,6 +115,61 @@ class ReadTextOnlyConllu(Step):
         self.logger.info(f"First dev sentence: {dev_dataset[0]}")
 
         return DatasetDict({"train": train_dataset, "dev": dev_dataset})
+
+
+@Step.register("loreiba.data::tokenize_plus")
+class TokenizePlus(Step):
+    DETERMINISTIC = True
+    CACHEABLE = True
+    FORMAT = DatasetsFormat()
+
+    def _process_split(
+        self, split: Dataset, tokenizer: Tokenizer, max_length: Optional[int], token_column: str
+    ) -> Dataset:
+        sentences = split[token_column]
+        output = []
+        for sentence in sentences:
+            input_str = " ".join(sentence)
+            r = tokenizer.encode_plus(
+                input_str,
+                add_special_tokens=True,
+                return_token_type_ids=True,
+                return_length=True,
+                return_attention_mask=True,
+                truncation=True,
+                max_length=max_length,
+                return_offsets_mapping=True,
+            )
+            # b, e are substring indices into the input_str showing how the wordpiece at index i
+            # corresponds to a substring in the input. Special tokens are indexed at (0,0).
+            # We can calculate which token index a wordpiece corresponds to by counting
+            # the number of spaces to the left. Note that these are 0 indexes and special tokens
+            # are indexed as corresponding to token index -1
+            r["token_indexes"] = [input_str[:b].count(" ") if b != e else -1 for b, e in r["offset_mapping"]]
+            del r["offset_mapping"]
+            del r["length"]
+            r[token_column] = sentence
+            output.append(dict(r))
+
+        features = datasets.Features(
+            {
+                token_column: Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_indexes": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+            }
+        )
+        return datasets.Dataset.from_list(output, features=features)
+
+    def run(
+        self,
+        dataset: DatasetDict,
+        tokenizer: Tokenizer,
+        max_length: Optional[int] = None,
+        token_column: str = "tokens",
+    ) -> DatasetDict:
+        return DatasetDict({k: self._process_split(v, tokenizer, max_length, token_column) for k, v in dataset.items()})
 
 
 @Step.register("loreiba.data::read_ud_treebank")
@@ -155,33 +246,7 @@ class ReadUDTreebank(Step):
                 "misc": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "text": Value(dtype="string", id=None),
                 "tokens": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "upos": Sequence(
-                    feature=ClassLabel(
-                        names=[
-                            "NOUN",
-                            "PUNCT",
-                            "ADP",
-                            "NUM",
-                            "SYM",
-                            "SCONJ",
-                            "ADJ",
-                            "PART",
-                            "DET",
-                            "CCONJ",
-                            "PROPN",
-                            "PRON",
-                            "X",
-                            "_",
-                            "ADV",
-                            "INTJ",
-                            "VERB",
-                            "AUX",
-                        ],
-                        id=None,
-                    ),
-                    length=-1,
-                    id=None,
-                ),
+                "upos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "xpos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
             }
         )
@@ -193,3 +258,154 @@ class ReadUDTreebank(Step):
         self.logger.info(f"First dev sentence: {dev_dataset[0]}")
 
         return DatasetDict({"train": train_dataset, "dev": dev_dataset, "test": test_dataset})
+
+
+@Step.register("loreiba.data::stanza_parse_dataset")
+class StanzaParseDataset(Step):
+    DETERMINISTIC = True  # actually we should assume parsers are non-deterministic, but we don't care
+    CACHEABLE = True
+    FORMAT = DatasetsFormat()
+
+    def run(
+        self,
+        dataset: DatasetDict,
+        language_code: str,
+        batch_size: int = 32,
+        allow_retokenization: bool = True,
+    ) -> DatasetDict:
+        config = {
+            "processors": "tokenize,mwt,pos,lemma,depparse",
+            "lang": language_code,
+            "use_gpu": True,
+            "logging_level": "INFO",
+            "tokenize_pretokenized": not allow_retokenization,
+            "tokenize_no_ssplit": True,  # never allow sentence resegmentation
+        }
+        pipeline = stanza.Pipeline(**config)
+
+        dataset_dict = {}
+
+        def sentence_to_record(s):
+            # filter out supertokens
+            s = [t for t in s if isinstance(t["id"], int)]
+            return {
+                "tokens": [t["text"] for t in s],
+                "lemmas": [t["lemma"] for t in s],
+                "upos": [t["upos"] for t in s],
+                "xpos": [t["xpos"] for t in s],
+                "feats": [t.get("feats", "") for t in s],  # for some reason, feats may not appear
+                "head": [t["head"] for t in s],
+                "deprel": [t["deprel"] for t in s],
+            }
+
+        features = datasets.Features(
+            {
+                "lemmas": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "tokens": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "upos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "xpos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "feats": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_indexes": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+            }
+        )
+
+        for split, data in dataset.items():
+            space_separated = [" ".join(ts) for ts in data["tokens"]]
+            chunks = list(mit.chunked(space_separated, batch_size))
+
+            outputs = []
+            for chunk in Tqdm.tqdm(chunks, desc=f"Parsing split {split}..."):
+                output = pipeline("\n\n".join(chunk))
+                for sentence in output.sentences:
+                    s = sentence.to_dict()
+                    record = sentence_to_record(s)
+                    outputs.append(record)
+
+            for i, output in enumerate(outputs):
+                output["input_ids"] = data[i]["input_ids"]
+                output["token_type_ids"] = data[i]["token_type_ids"]
+                output["attention_mask"] = data[i]["attention_mask"]
+                output["token_indexes"] = data[i]["token_indexes"]
+
+            dataset_dict[split] = datasets.Dataset.from_list(outputs, features=features)
+            self.logger.info(f"Finished processing {split}")
+
+        for split, dataset in dataset_dict.items():
+            self.logger.info(f"Random {split} sentence: {random.choice(dataset_dict[split])}")
+
+        return datasets.DatasetDict(dataset_dict)
+
+
+@Step.register("loreiba.data::finalize")
+class Finalize(Step):
+    DETERMINISTIC = True
+    CACHEABLE = True
+    FORMAT = DatasetsFormat()
+
+    def run(
+        self,
+        dataset: DatasetDict,
+    ) -> DatasetDict:
+        dataset = dataset.remove_columns(["tokens", "lemmas", "xpos", "upos"])
+        deprels = sorted(list(set(d for s in dataset["train"]["deprel"] for d in s)))
+        self.logger.info(f"Using deprel set: {deprels}")
+
+        features = datasets.Features(
+            {
+                "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_indexes": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "head": Sequence(feature=Value(dtype="int16", id=None), length=-1, id=None),
+                "deprel": Sequence(feature=ClassLabel(names=deprels, id=None), length=-1, id=None),
+            }
+        )
+
+        new_dataset = {}
+        for split, rows in dataset.items():
+            new_dataset[split] = Dataset.from_list(
+                [
+                    {
+                        "input_ids": v["input_ids"],
+                        "token_type_ids": v["token_type_ids"],
+                        "attention_mask": v["attention_mask"],
+                        "token_indexes": v["token_indexes"],
+                        "head": [int(i) for i in v["head"]],
+                        "deprel": v["deprel"],
+                    }
+                    for v in rows
+                ],
+                features=features,
+            )
+
+        return datasets.DatasetDict(new_dataset).with_format("torch")
+
+
+# feature=ClassLabel(
+#     names=[
+#         "NOUN",
+#         "PUNCT",
+#         "ADP",
+#         "NUM",
+#         "SYM",
+#         "SCONJ",
+#         "ADJ",
+#         "PART",
+#         "DET",
+#         "CCONJ",
+#         "PROPN",
+#         "PRON",
+#         "X",
+#         "_",
+#         "ADV",
+#         "INTJ",
+#         "VERB",
+#         "AUX",
+#     ],
+#     id=None,
+# ),

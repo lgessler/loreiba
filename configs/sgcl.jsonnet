@@ -2,6 +2,8 @@
 # Model settings #
 ##################
 local pretrained_model = "distilbert-base-cased";
+local max_length = 512;
+local tokenizer = { pretrained_model_name_or_path: pretrained_model };
 
 ####################
 # Trainer settings #
@@ -40,10 +42,8 @@ local training_engine = {
 };
 
 local collate_fn = {
-    type: "transformers::DataCollatorWithPadding",
-    tokenizer: {
-        pretrained_model_name_or_path: pretrained_model
-    }
+    type: "loreiba.sgcl.collator::collator",
+    tokenizer: tokenizer,
 };
 local train_dataloader = {
     shuffle: true,
@@ -69,54 +69,52 @@ local language_code_index = {
 
 {
     steps: {
-        raw_text_data: {
-            type: "loreiba.data::read_text_only_conllu",
-            shortcut: language,
-        },
         raw_treebank_data: {
             type: "loreiba.data::read_ud_treebank",
             shortcut: language,
             tag: "r2.11"  // Use UD treebanks from release 2.11
         },
+        bare_text_data: {
+            type: "loreiba.data::read_text_only_conllu",
+            shortcut: language,
+            stanza_retokenize: true,
+            stanza_language_code: language_code_index[language],
+        },
+        tokenized_text_data: {
+            type: "loreiba.data::tokenize_plus",
+            dataset: { "type": "ref", "ref": "bare_text_data" },
+            max_length: max_length,
+            tokenizer: tokenizer
+        },
         parsed_text_data: {
-            type: "loreiba.stanza::stanza_parse_dataset",
-            dataset: { "type": "ref", "ref": "raw_text_data" },
+            type: "loreiba.data::stanza_parse_dataset",
+            dataset: { "type": "ref", "ref": "tokenized_text_data" },
             language_code: language_code_index[language],
-        }
-        //stype_instances: {
-        //    type: "construct_stype_instances",
-        //    train_conllu: "data/en_gum-ud-train.conllu",
-        //    dev_conllu: "data/en_gum-ud-dev.conllu",
-        //    test_conllu: "data/en_gum-ud-test.conllu",
-        //    tokenizer: { pretrained_model_name_or_path: pretrained_model }
-        //},
-        //label_count: {
-        //    type: "label_count",
-        //    dataset: { type: "ref", ref: "stype_instances" }
-        //},
-        //trained_model: {
-        //    type: "torch::train",
-        //    model: {
-        //        //type: "transformers::AutoModelForSequenceClassification::from_config",
-        //        type: "demo_auto_model_wrapper::from_config",
-        //        config: {
-        //            pretrained_model_name_or_path: pretrained_model,
-        //            num_labels: { type: "ref", ref: "label_count" },
-        //            problem_type: "single_label_classification"
-        //        },
-        //    },
-        //    dataset_dict: { type: "ref", ref: "stype_instances" },
-        //    training_engine: training_engine,
-        //    log_every: 1,
-        //    train_dataloader: train_dataloader,
-        //    train_steps: training_steps,
-        //    validate_every: validate_every,
-        //    checkpoint_every: validate_every,
-        //    validation_split: "dev",
-        //    validation_dataloader: val_dataloader,
-        //    val_metric_name: "accuracy",
-        //    minimize_val_metric: false,
-        //},
+            allow_retokenization: false,  // we tokenized earlier
+        },
+        model_inputs: {
+            type: "loreiba.data::finalize",
+            dataset: { "type": "ref", "ref": "parsed_text_data" },
+        },
+        trained_model: {
+            type: "torch::train",
+            model: {
+                type: "loreiba.sgcl.model::sgcl_model",
+                //config: {
+                //},
+            },
+            dataset_dict: { type: "ref", ref: "model_inputs" },
+            training_engine: training_engine,
+            log_every: 1,
+            train_dataloader: train_dataloader,
+            train_steps: training_steps,
+            validate_every: validate_every,
+            checkpoint_every: validate_every,
+            validation_split: "dev",
+            validation_dataloader: val_dataloader,
+            val_metric_name: "loss",
+            minimize_val_metric: true,
+        },
         //final_metrics: {
         //    type: "torch::eval",
         //    model: { type: "ref", ref: "trained_model" },
