@@ -1,27 +1,62 @@
-##################
-# Model settings #
-##################
-local pretrained_model = "distilbert-base-cased";
+// --------------------------------------------------------------------------------
+// Language settings
+// --------------------------------------------------------------------------------
+local language = "wolof";
+local language_code_index = {
+    "coptic": "cop",
+    "greek": "grc",
+    "indonesian": "id",
+    "maltese": "mt",
+    "tamil": "ta",
+    "uyghur": "ug",
+    "wolof": "wo",
+};
+
+// a helper
+local stringifyPair(k,v) = std.toString(k) + "-" + std.toString(v);
+local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringifyPair, o)));
+
+// --------------------------------------------------------------------------------
+// Model settings
+// --------------------------------------------------------------------------------
 local max_length = 512;
-local tokenizer = { pretrained_model_name_or_path: pretrained_model };
 
-####################
-# Trainer settings #
-####################
+// For pretrained
+// local FROM_PRETRAINED = true;
+// local model_path = "distilbert-base-cased";
+// local tokenizer = { pretrained_model_name_or_path: model_path };
+// local model = {
+//     type: "loreiba.sgcl.model::sgcl_model",
+//     pretrained_model_name_or_path: model_path,
+// };
 
-# Trainer settings, adjust to your use-case.
-local training_steps = 4000;  # total number of optimization steps to train for
-local validate_every = 400;  # how often to validate and save checkpoints
+// For non-pretrained
+local FROM_PRETRAINED = false;
+local roberta_config = {
+    hidden_size: 128,
+    num_layers: 3,
+    num_attention_heads: 8,
+    intermediate_size: 512,
+};
+local model_path = "./workspace/models/roberta_" + stringifyObject(roberta_config);
+local tokenizer = { pretrained_model_name_or_path: model_path };
+local model = {
+    type: "loreiba.sgcl.model::sgcl_model",
+    roberta_config: roberta_config,
+};
 
-# This is the batch size per GPU, ignoring gradient accumulation:
+
+// --------------------------------------------------------------------------------
+// Trainer settings
+// --------------------------------------------------------------------------------
+local training_steps = 4000;   # total number of optimization steps to train for
+local validate_every = 400;    # how often to validate and save checkpoints
 local batch_size = 64;
-
 local amp = false;  # use PyTorch's native automatic mixed precision
 
-######################
-# Optimizer settings #
-######################
-
+// --------------------------------------------------------------------------------
+// Optimizer settings
+// --------------------------------------------------------------------------------
 local warmup_steps = 400;
 local learning_rate = 3e-5;  # you can probably use a higher LR for a small model like "gpt2"
 
@@ -43,7 +78,7 @@ local training_engine = {
 
 local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
-    tokenizer: tokenizer,
+    tokenizer: tokenizer
 };
 local train_dataloader = {
     shuffle: true,
@@ -54,17 +89,6 @@ local val_dataloader = {
     shuffle: false,
     batch_size: batch_size,
     collate_fn: collate_fn
-};
-
-local language = "wolof";
-local language_code_index = {
-    "coptic": "cop",
-    "greek": "grc",
-    "indonesian": "id",
-    "maltese": "mt",
-    "tamil": "ta",
-    "uyghur": "ug",
-    "wolof": "wo",
 };
 
 {
@@ -80,11 +104,17 @@ local language_code_index = {
             stanza_retokenize: true,
             stanza_language_code: language_code_index[language],
         },
+        [if FROM_PRETRAINED then null else "tokenizer"]: {
+            type: "loreiba.data::train_tokenizer",
+            dataset: { "type": "ref", "ref": "bare_text_data" },
+            model_path: model_path
+        },
         tokenized_text_data: {
             type: "loreiba.data::tokenize_plus",
             dataset: { "type": "ref", "ref": "bare_text_data" },
             max_length: max_length,
-            tokenizer: tokenizer
+            tokenizer: tokenizer,
+            step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
         },
         parsed_text_data: {
             type: "loreiba.data::stanza_parse_dataset",
@@ -98,11 +128,7 @@ local language_code_index = {
         },
         trained_model: {
             type: "torch::train",
-            model: {
-                type: "loreiba.sgcl.model::sgcl_model",
-                //config: {
-                //},
-            },
+            model: model,
             dataset_dict: { type: "ref", ref: "model_inputs" },
             training_engine: training_engine,
             log_every: 1,

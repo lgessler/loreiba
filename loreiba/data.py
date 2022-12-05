@@ -11,9 +11,11 @@ import stanza
 from datasets import ClassLabel, Dataset, DatasetDict, Sequence, Value
 from github import Github
 from tango import Step
-from tango.common import Tqdm
+from tango.common import Lazy, Tqdm
 from tango.integrations.datasets import DatasetsFormat
 from tango.integrations.transformers import Tokenizer
+
+from loreiba.tokenizers import simple_train_tokenizer
 
 
 @Step.register("loreiba.data::read_text_only_conllu")
@@ -165,11 +167,23 @@ class TokenizePlus(Step):
     def run(
         self,
         dataset: DatasetDict,
-        tokenizer: Tokenizer,
+        tokenizer: Lazy[Tokenizer],
         max_length: Optional[int] = None,
         token_column: str = "tokens",
     ) -> DatasetDict:
+        tokenizer = tokenizer.construct()
         return DatasetDict({k: self._process_split(v, tokenizer, max_length, token_column) for k, v in dataset.items()})
+
+
+@Step.register("loreiba.data::train_tokenizer")
+class TrainTokenizer(Step):
+    DETERMINISTIC = True
+    CACHEABLE = True
+
+    def run(self, dataset: DatasetDict, model_path: str):
+        sentences = dataset["train"]["tokens"]
+        simple_train_tokenizer(sentences, model_path)
+        self.logger.info(f"Wrote tokenizer to {model_path}")
 
 
 @Step.register("loreiba.data::read_ud_treebank")
