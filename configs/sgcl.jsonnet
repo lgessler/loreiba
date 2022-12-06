@@ -38,7 +38,7 @@ local max_length = 512;
 local FROM_PRETRAINED = false;
 local roberta_config = {
     hidden_size: 128,
-    num_layers: 3,
+    num_hidden_layers: 3,
     num_attention_heads: 8,
     intermediate_size: 512,
     max_position_embeddings: max_length,
