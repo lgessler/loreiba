@@ -43,7 +43,7 @@ local roberta_config = {
     intermediate_size: 512,
     max_position_embeddings: max_length,
 };
-local model_path = "./workspace/models/roberta_" + stringifyObject(roberta_config);
+local model_path = "./workspace/models/" + language + "_" + stringifyObject(roberta_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
