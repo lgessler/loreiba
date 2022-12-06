@@ -1,5 +1,6 @@
 # core packages
 transformers==4.24.0
+torch==1.13.0
 tokenizers==0.13.2
 ai2-tango[all]==1.0.2
 allennlp-light==1.0.0
