@@ -4,6 +4,7 @@ import torch
 from tango.common import Lazy
 from tango.integrations.torch import DataCollator
 from tango.integrations.transformers import Tokenizer
+from transformers import DataCollatorForLanguageModeling
 
 
 @DataCollator.register("loreiba.sgcl.collator::collator")
@@ -13,15 +14,31 @@ class SgclDataCollator(DataCollator):
         self.tokenizer = tokenizer
         self.text_pad_id = tokenizer.pad_token_id
         self.text_fields = text_fields
+        self.mlm_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=0.15)
 
-    def __call__(self, items) -> Dict[str, Any]:
+    def __call__(self, batch) -> Dict[str, Any]:
         padded = {}
-        for key in items[0].keys():
-            max_length = max(len(item[key]) for item in items)
+        for key in batch[0].keys():
+            max_length = max(len(item[key]) for item in batch)
             pad_id = 0 if key not in self.text_fields else self.text_pad_id
-            padded[key] = [
-                torch.hstack((item[key], torch.tensor([pad_id] * (max_length - len(item[key]))).to(item[key].device)))
-                for item in items
-            ]
+            value = torch.vstack(
+                [
+                    torch.hstack(
+                        (
+                            item[key],
+                            torch.tensor([pad_id] * (max_length - len(item[key])), dtype=torch.long).to(
+                                item[key].device
+                            ),
+                        )
+                    )
+                    for item in batch
+                ]
+            ).to(batch[0][key].device)
+            if key == "input_ids":
+                input_ids, labels = self.mlm_collator.torch_mask_tokens(value)
+                padded[key] = input_ids
+                padded["labels"] = labels
+            else:
+                padded[key] = value
 
         return padded

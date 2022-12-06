@@ -1,7 +1,7 @@
 // --------------------------------------------------------------------------------
 // Language settings
 // --------------------------------------------------------------------------------
-local language = "wolof";
+local language = std.extVar("LANGUAGE");
 local language_code_index = {
     "coptic": "cop",
     "greek": "grc",
@@ -11,6 +11,7 @@ local language_code_index = {
     "uyghur": "ug",
     "wolof": "wo",
 };
+local do_not_stanza_retokenize = ["coptic"];
 
 // a helper
 local stringifyPair(k,v) = std.toString(k) + "-" + std.toString(v);
@@ -21,6 +22,7 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // --------------------------------------------------------------------------------
 local max_length = 512;
 
+
 // For pretrained
 // local FROM_PRETRAINED = true;
 // local model_path = "distilbert-base-cased";
@@ -30,6 +32,7 @@ local max_length = 512;
 //     pretrained_model_name_or_path: model_path,
 // };
 
+
 // For non-pretrained
 local FROM_PRETRAINED = false;
 local roberta_config = {
@@ -37,48 +40,54 @@ local roberta_config = {
     num_layers: 3,
     num_attention_heads: 8,
     intermediate_size: 512,
+    max_position_embeddings: max_length,
 };
 local model_path = "./workspace/models/roberta_" + stringifyObject(roberta_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
     roberta_config: roberta_config,
+    tokenizer: tokenizer,
+    model_output_path: model_path,
 };
-
 
 // --------------------------------------------------------------------------------
 // Trainer settings
 // --------------------------------------------------------------------------------
-local training_steps = 4000;   # total number of optimization steps to train for
-local validate_every = 400;    # how often to validate and save checkpoints
-local batch_size = 64;
-local amp = false;  # use PyTorch's native automatic mixed precision
+local batch_size = 16;
+local instances_per_epoch = 256000;
+// BERT base batch size was 256, trained for 1M steps, so try to match this by half
+// local BERT_base_total_instances = 256000000;
+local steps_per_epoch = instances_per_epoch / batch_size;
+// We want to use the full amount, but 200 is a practical limit
+local num_epochs = 200; // BERT_base_total_instances / instances_per_epoch;
+
+local validate_every = steps_per_epoch;
 
 // --------------------------------------------------------------------------------
 // Optimizer settings
 // --------------------------------------------------------------------------------
-local warmup_steps = 400;
-local learning_rate = 3e-5;  # you can probably use a higher LR for a small model like "gpt2"
-
 local training_engine = {
     type: "torch",
     optimizer: {
         type: "torch::AdamW",
-        lr: learning_rate,
-        betas: [0.9, 0.95],
+        lr: 3e-3,
+        betas: [0.9, 0.99],
         eps: 1e-5,
+        weight_decay: 0.05
     },
     lr_scheduler: {
-        type: "transformers::linear",
-        num_warmup_steps: warmup_steps,
-        num_training_steps: training_steps,
+        type: "transformers::cosine",
+        num_warmup_steps: steps_per_epoch,
+        num_training_steps: num_epochs * steps_per_epoch,
     },
-    amp: amp
+    amp: false
 };
 
 local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
-    tokenizer: tokenizer
+    tokenizer: tokenizer,
+    text_fields: ["input_ids"]
 };
 local train_dataloader = {
     shuffle: true,
@@ -101,7 +110,7 @@ local val_dataloader = {
         bare_text_data: {
             type: "loreiba.data::read_text_only_conllu",
             shortcut: language,
-            stanza_retokenize: true,
+            stanza_retokenize: if std.member(do_not_stanza_retokenize, language) then false else true,
             stanza_language_code: language_code_index[language],
         },
         [if FROM_PRETRAINED then null else "tokenizer"]: {
@@ -133,13 +142,16 @@ local val_dataloader = {
             training_engine: training_engine,
             log_every: 1,
             train_dataloader: train_dataloader,
-            train_steps: training_steps,
-            validate_every: validate_every,
+            train_epochs: num_epochs,
+            //validate_every: validate_every,
             checkpoint_every: validate_every,
             validation_split: "dev",
             validation_dataloader: val_dataloader,
             val_metric_name: "loss",
             minimize_val_metric: true,
+            callbacks: [
+                {"type": "loreiba.model::write_model", path: model_path, model_attr: "encoder"}
+            ],
         },
         //final_metrics: {
         //    type: "torch::eval",

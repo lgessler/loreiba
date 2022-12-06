@@ -42,7 +42,7 @@ class ReadTextOnlyConllu(Step):
         conllu_path_train: Optional[str] = None,
         conllu_path_dev: Optional[str] = None,
     ) -> DatasetDict:
-        def retokenize(sentences):
+        if stanza_retokenize:
             config = {
                 "processors": "tokenize,mwt",
                 "lang": stanza_language_code,
@@ -52,13 +52,15 @@ class ReadTextOnlyConllu(Step):
                 "tokenize_no_ssplit": True,
             }
             pipeline = stanza.Pipeline(**config)
+
+        def retokenize(sentences, path):
             batch_size = 256
 
             space_separated = [" ".join(ts) for ts in sentences]
-            chunks = list(mit.chunked(space_separated, batch_size))[:5]  # TODO deleteme
+            chunks = list(mit.chunked(space_separated, batch_size))
 
             outputs = []
-            for chunk in Tqdm.tqdm(chunks, desc=f"Retokenizing with Stanza..."):
+            for chunk in Tqdm.tqdm(chunks, desc=f"Retokenizing {path} with Stanza..."):
                 output = pipeline("\n\n".join(chunk))
                 for sentence in output.sentences:
                     s = sentence.to_dict()
@@ -71,9 +73,9 @@ class ReadTextOnlyConllu(Step):
 
         def read_conllu(path):
             with open(path, "r") as f:
-                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())]
+                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())][:4000]
                 if stanza_retokenize:
-                    sentences = retokenize(sentences)
+                    sentences = retokenize(sentences, path)
                 return sentences
 
         if shortcut is not None:
