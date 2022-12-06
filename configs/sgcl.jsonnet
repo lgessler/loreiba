@@ -133,6 +133,7 @@ local val_dataloader = {
             language_code: language_code_index[language],
             allow_retokenization: false,  // we tokenized earlier
             stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
+            batch_size: 8,
         },
         model_inputs: {
             type: "loreiba.data::finalize",
