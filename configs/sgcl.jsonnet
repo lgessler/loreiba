@@ -11,7 +11,8 @@ local language_code_index = {
     "uyghur": "ug",
     "wolof": "wo",
 };
-local do_not_stanza_retokenize = ["coptic"];
+local stanza_do_not_retokenize = ["coptic"];
+local stanza_no_mwt = ["greek"];
 
 // a helper
 local stringifyPair(k,v) = std.toString(k) + "-" + std.toString(v);
@@ -110,7 +111,8 @@ local val_dataloader = {
         bare_text_data: {
             type: "loreiba.data::read_text_only_conllu",
             shortcut: language,
-            stanza_retokenize: if std.member(do_not_stanza_retokenize, language) then false else true,
+            stanza_retokenize: if std.member(stanza_do_not_retokenize, language) then false else true,
+            stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
             stanza_language_code: language_code_index[language],
         },
         [if FROM_PRETRAINED then null else "tokenizer"]: {
@@ -130,6 +132,7 @@ local val_dataloader = {
             dataset: { "type": "ref", "ref": "tokenized_text_data" },
             language_code: language_code_index[language],
             allow_retokenization: false,  // we tokenized earlier
+            stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
         },
         model_inputs: {
             type: "loreiba.data::finalize",

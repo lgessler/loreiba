@@ -41,10 +41,11 @@ class ReadTextOnlyConllu(Step):
         shortcut: Optional[str] = None,
         conllu_path_train: Optional[str] = None,
         conllu_path_dev: Optional[str] = None,
+        stanza_use_mwt: bool = True,
     ) -> DatasetDict:
         if stanza_retokenize:
             config = {
-                "processors": "tokenize,mwt",
+                "processors": "tokenize,mwt" if stanza_use_mwt else "tokenize",
                 "lang": stanza_language_code,
                 "use_gpu": True,
                 "logging_level": "INFO",
@@ -288,9 +289,10 @@ class StanzaParseDataset(Step):
         language_code: str,
         batch_size: int = 32,
         allow_retokenization: bool = True,
+        stanza_use_mwt: bool = True,
     ) -> DatasetDict:
         config = {
-            "processors": "tokenize,mwt,pos,lemma,depparse",
+            "processors": "tokenize,mwt,pos,lemma,depparse" if stanza_use_mwt else "tokenize,pos,lemma,depparse",
             "lang": language_code,
             "use_gpu": True,
             "logging_level": "INFO",
