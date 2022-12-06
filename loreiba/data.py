@@ -183,7 +183,7 @@ class TrainTokenizer(Step):
     DETERMINISTIC = True
     CACHEABLE = True
 
-    def run(self, dataset: DatasetDict, model_path: str):
+    def run(self, dataset: DatasetDict, model_path: str) -> None:
         sentences = dataset["train"]["tokens"]
         simple_train_tokenizer(sentences, model_path)
         self.logger.info(f"Wrote tokenizer to {model_path}")
