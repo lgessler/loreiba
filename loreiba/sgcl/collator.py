@@ -36,6 +36,10 @@ class SgclDataCollator(DataCollator):
             ).to(batch[0][key].device)
             if key == "input_ids":
                 input_ids, labels = self.mlm_collator.torch_mask_tokens(value)
+                num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
+                while num_masked == 0:
+                    input_ids, labels = self.mlm_collator.torch_mask_tokens(value)
+                    num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
                 padded[key] = input_ids
                 padded["labels"] = labels
             else:
