@@ -375,7 +375,6 @@ class Finalize(Step):
             list(
                 set(d for s in dataset["train"]["deprel"] for d in s)
                 | set(d for s in dataset["dev"]["deprel"] for d in s)
-                | set(d for s in dataset["test"]["deprel"] for d in s)
             )
         )
         self.logger.info(f"Using deprel set: {deprels}")
