@@ -308,7 +308,7 @@ class StanzaParseDataset(Step):
             s = [t for t in s if isinstance(t["id"], int)]
             return {
                 "tokens": [t["text"] for t in s],
-                "lemmas": [t["lemma"] for t in s],
+                "lemmas": [t.get("lemma", "") for t in s],
                 "upos": [t["upos"] for t in s],
                 "xpos": [t["xpos"] for t in s],
                 "feats": [t.get("feats", "") for t in s],  # for some reason, feats may not appear
