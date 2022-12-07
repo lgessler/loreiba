@@ -55,15 +55,21 @@ local model = {
 // --------------------------------------------------------------------------------
 // Trainer settings
 // --------------------------------------------------------------------------------
-local batch_size = 16;
-local instances_per_epoch = 256000;
-// BERT base batch size was 256, trained for 1M steps, so try to match this by half
-// local BERT_base_total_instances = 256000000;
-local steps_per_epoch = instances_per_epoch / batch_size;
-// We want to use the full amount, but 200 is a practical limit
-local num_epochs = 200; // BERT_base_total_instances / instances_per_epoch;
+// BERT's original settings:
+//    We train with batch size of 256 sequences
+//    (256 sequences * 512 tokens = 128,000 tokens/batch)
+//    for 1,000,000 steps, which is approximately 40
+//    epochs over the 3.3 billion word corpus.
+local BERT_batch_size = 256;
+local BERT_steps = 1e6;
+local BERT_total_instances = BERT_steps * BERT_batch_size;
 
-local validate_every = steps_per_epoch;
+// our settings
+local batch_size = 64;
+local instances_per_epoch = 256000;
+local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
+
+local validate_every = 20000;
 
 // --------------------------------------------------------------------------------
 // Optimizer settings
@@ -79,8 +85,8 @@ local training_engine = {
     },
     lr_scheduler: {
         type: "transformers::cosine",
-        num_warmup_steps: steps_per_epoch,
-        num_training_steps: num_epochs * steps_per_epoch,
+        num_warmup_steps: validate_every,
+        num_training_steps: num_steps,
     },
     amp: false
 };
@@ -146,8 +152,9 @@ local val_dataloader = {
             training_engine: training_engine,
             log_every: 1,
             train_dataloader: train_dataloader,
-            train_epochs: num_epochs,
-            //validate_every: validate_every,
+            //train_epochs: num_epochs,
+            train_steps: num_steps,
+            validate_every: validate_every,
             checkpoint_every: validate_every,
             validation_split: "dev",
             validation_dataloader: val_dataloader,
