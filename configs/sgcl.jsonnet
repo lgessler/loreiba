@@ -12,7 +12,7 @@ local language_code_index = {
     "wolof": "wo",
 };
 local stanza_do_not_retokenize = ["coptic"];
-local stanza_no_mwt = ["greek"];
+local stanza_no_mwt = ["greek", "uyghur", "maltese"];
 
 // a helper
 local stringifyPair(k,v) = std.toString(k) + "-" + std.toString(v);
