@@ -370,7 +370,14 @@ class Finalize(Step):
         dataset: DatasetDict,
     ) -> DatasetDict:
         dataset = dataset.remove_columns(["tokens", "lemmas", "xpos", "upos"])
-        deprels = sorted(list(set(d for s in dataset["train"]["deprel"] for d in s)))
+        # It's OK to peek at test since UD deprels are a fixed set--this is just for convenience, not cheating
+        deprels = sorted(
+            list(
+                set(d for s in dataset["train"]["deprel"] for d in s)
+                | set(d for s in dataset["dev"]["deprel"] for d in s)
+                | set(d for s in dataset["test"]["deprel"] for d in s)
+            )
+        )
         self.logger.info(f"Using deprel set: {deprels}")
 
         features = datasets.Features(
