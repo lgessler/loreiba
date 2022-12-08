@@ -186,9 +186,9 @@ class TrainTokenizer(Step):
 
     def run(self, dataset: DatasetDict, model_path: str) -> None:
         sentences = dataset["train"]["tokens"]
-        if os.path.exists(self.path):
-            self.logger.info(f"Already found model at {self.path}. Removing...")
-            shutil.rmtree(self.path)
+        if os.path.exists(model_path):
+            self.logger.info(f"Already found model at {model_path}. Removing...")
+            shutil.rmtree(model_path)
         simple_train_tokenizer(sentences, model_path)
         self.logger.info(f"Wrote tokenizer to {model_path}")
 
