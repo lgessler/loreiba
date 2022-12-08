@@ -9,11 +9,11 @@ from transformers import DataCollatorForLanguageModeling
 
 @DataCollator.register("loreiba.sgcl.collator::collator")
 class SgclDataCollator(DataCollator):
-    def __init__(self, tokenizer: Lazy[Tokenizer], text_fields: List[str] = ()):
+    def __init__(self, tokenizer: Lazy[Tokenizer], text_field: str = "input_ids"):
         tokenizer = tokenizer.construct()
         self.tokenizer = tokenizer
         self.text_pad_id = tokenizer.pad_token_id
-        self.text_fields = text_fields
+        self.text_field = text_field
         self.mlm_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=0.15)
 
     def __call__(self, batch) -> Dict[str, Any]:
@@ -34,7 +34,7 @@ class SgclDataCollator(DataCollator):
                     for item in batch
                 ]
             ).to(batch[0][key].device)
-            if key == "input_ids":
+            if key == self.text_field:
                 input_ids, labels = self.mlm_collator.torch_mask_tokens(value)
                 num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
                 while num_masked == 0:

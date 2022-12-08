@@ -94,7 +94,6 @@ local training_engine = {
 local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
     tokenizer: tokenizer,
-    text_fields: ["input_ids"]
 };
 local train_dataloader = {
     shuffle: true,
