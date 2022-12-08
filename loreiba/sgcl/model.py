@@ -1,6 +1,4 @@
 import logging
-import os
-import shutil
 from typing import Any, Dict, Optional
 
 import torch
@@ -83,8 +81,5 @@ class WriteModelCallback(TrainCallback):
         model = self.model
         if self.model_attr:
             model = getattr(model, self.model_attr)
-        if os.path.exists(self.path):
-            self.logger.info(f"Already found model at {self.path}. Removing...")
-            shutil.rmtree(self.path)
         model.save_pretrained(self.path)
         self.logger.info(f"Wrote model to {self.path}")

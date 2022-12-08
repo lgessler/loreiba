@@ -1,5 +1,6 @@
 import os
 import random
+import shutil
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -185,6 +186,9 @@ class TrainTokenizer(Step):
 
     def run(self, dataset: DatasetDict, model_path: str) -> None:
         sentences = dataset["train"]["tokens"]
+        if os.path.exists(self.path):
+            self.logger.info(f"Already found model at {self.path}. Removing...")
+            shutil.rmtree(self.path)
         simple_train_tokenizer(sentences, model_path)
         self.logger.info(f"Wrote tokenizer to {model_path}")
 
