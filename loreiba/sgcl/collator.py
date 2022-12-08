@@ -20,7 +20,7 @@ class SgclDataCollator(DataCollator):
         padded = {}
         for key in batch[0].keys():
             max_length = max(len(item[key]) for item in batch)
-            pad_id = 0 if key not in self.text_fields else self.text_pad_id
+            pad_id = 0 if key != self.text_field else self.text_pad_id
             value = torch.vstack(
                 [
                     torch.hstack(
