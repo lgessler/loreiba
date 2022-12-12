@@ -123,6 +123,31 @@ class ReadTextOnlyConllu(Step):
         return DatasetDict({"train": train_dataset, "dev": dev_dataset})
 
 
+def token_spans_from_wordpiece_token_indexes(token_indexes):
+    """
+    Assume as input a sequence that maps from wordpieces to original tokens, e.g.:
+      [-1, 0, 0, 1, -1] for ["[CLS]", "lem", "##ming", "fur", "[SEP]"]
+    Turn that sequence into a sequence of tuples representing spans that collectively partition the wordspace indexes
+    such that each subdivision corresponds to an original token. For example:
+      [(0,0), (1,2), (3,3), (4,4)
+    """
+    token_spans = []
+    i = 0
+    while i < len(token_indexes):
+        current = token_indexes[i]
+        if current == -1:
+            token_spans.append((i, i))
+            i += 1
+        else:
+            j = i
+            while j < len(token_indexes) and token_indexes[j + 1] == token_indexes[i]:
+                j += 1
+            token_spans.append((i, j))
+            i = j + 1
+
+    return token_spans
+
+
 @Step.register("loreiba.data::tokenize_plus")
 class TokenizePlus(Step):
     DETERMINISTIC = True
@@ -151,10 +176,13 @@ class TokenizePlus(Step):
             # We can calculate which token index a wordpiece corresponds to by counting
             # the number of spaces to the left. Note that these are 0 indexes and special tokens
             # are indexed as corresponding to token index -1
-            r["token_indexes"] = [input_str[:b].count(" ") if b != e else -1 for b, e in r["offset_mapping"]]
+            token_indexes = [input_str[:b].count(" ") if b != e else -1 for b, e in r["offset_mapping"]]
+            # Now get spans
+            token_spans = token_spans_from_wordpiece_token_indexes(token_indexes)
             del r["offset_mapping"]
             del r["length"]
             r[token_column] = sentence
+            r["token_spans"] = token_spans
             output.append(dict(r))
 
         features = datasets.Features(
@@ -163,7 +191,9 @@ class TokenizePlus(Step):
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_indexes": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_spans": Sequence(
+                    feature=Sequence(feature=Value(dtype="int32", id=None), length=2, id=None), length=-1, id=None
+                ),
             }
         )
         return datasets.Dataset.from_list(output, features=features)
@@ -332,7 +362,9 @@ class StanzaParseDataset(Step):
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_indexes": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_spans": Sequence(
+                    feature=Sequence(feature=Value(dtype="int32", id=None), length=2, id=None), length=-1, id=None
+                ),
             }
         )
 
@@ -352,7 +384,7 @@ class StanzaParseDataset(Step):
                 output["input_ids"] = data[i]["input_ids"]
                 output["token_type_ids"] = data[i]["token_type_ids"]
                 output["attention_mask"] = data[i]["attention_mask"]
-                output["token_indexes"] = data[i]["token_indexes"]
+                output["token_spans"] = data[i]["token_spans"]
 
             dataset_dict[split] = datasets.Dataset.from_list(outputs, features=features)
             self.logger.info(f"Finished processing {split}")
@@ -388,7 +420,9 @@ class Finalize(Step):
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_indexes": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_spans": Sequence(
+                    feature=Sequence(feature=Value(dtype="int32", id=None), length=2, id=None), length=-1, id=None
+                ),
                 "head": Sequence(feature=Value(dtype="int16", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=ClassLabel(names=deprels, id=None), length=-1, id=None),
             }
@@ -402,7 +436,7 @@ class Finalize(Step):
                         "input_ids": v["input_ids"],
                         "token_type_ids": v["token_type_ids"],
                         "attention_mask": v["attention_mask"],
-                        "token_indexes": v["token_indexes"],
+                        "token_spans": v["token_spans"],
                         "head": [int(i) for i in v["head"]],
                         "deprel": v["deprel"],
                     }
