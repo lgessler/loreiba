@@ -54,15 +54,20 @@ class SGCLModel(Model):
             logger.info(f"Initializing a new Roberta model with config {config}")
             self.encoder = RobertaModel(config=config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config=config)
+        self.pad_id = tokenizer.pad_token_id
 
     def _mlm_loss(self, preds, labels):
         loss_fct = CrossEntropyLoss(ignore_index=-100)
         masked_lm_loss = loss_fct(preds.view(-1, self.encoder.config.vocab_size), labels.view(-1))
         return masked_lm_loss
 
-    def forward(self, input_ids, token_type_ids, attention_mask, token_indexes, head, deprel, labels=None):
+    def forward(self, input_ids, token_type_ids, attention_mask, token_spans, head, deprel, labels=None):
         outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
-            input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+            output_attentions=True,
         )
         x = outputs.last_hidden_state
         mlm_preds = self.lm_head(x)
