@@ -50,6 +50,11 @@ local model = {
     roberta_config: roberta_config,
     tokenizer: tokenizer,
     model_output_path: model_path,
+    sgcl_config: {
+        type: "tree",
+        subtree_sampling_method: "all",
+        max_negative_per_subtree: 3,
+    }
 };
 
 // --------------------------------------------------------------------------------

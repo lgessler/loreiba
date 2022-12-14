@@ -11,6 +11,8 @@ from transformers import AutoModel, BertConfig, RobertaConfig, RobertaModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
+from loreiba.sgcl.trees import SgclConfig, syntax_guided_loss
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +26,7 @@ class SGCLModel(Model):
     def __init__(
         self,
         tokenizer: Tokenizer,
+        sgcl_config: SgclConfig,
         pretrained_model_name_or_path: Optional[str] = None,
         roberta_config: Dict[str, Any] = None,
         *args,
@@ -55,6 +58,7 @@ class SGCLModel(Model):
             self.encoder = RobertaModel(config=config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config=config)
         self.pad_id = tokenizer.pad_token_id
+        self.sgcl_config = sgcl_config
 
     def _mlm_loss(self, preds, labels):
         loss_fct = CrossEntropyLoss(ignore_index=-100)
@@ -69,10 +73,16 @@ class SGCLModel(Model):
             output_hidden_states=True,
             output_attentions=True,
         )
+        hidden_states = outputs.hidden_states[1:]
+        attentions = outputs.attentions
         x = outputs.last_hidden_state
         mlm_preds = self.lm_head(x)
-        mlm_loss = self._mlm_loss(mlm_preds, labels)
-        return {"loss": mlm_loss}
+        if self.training and labels is not None:
+            mlm_loss = self._mlm_loss(mlm_preds, labels)
+            sg_loss = syntax_guided_loss(self.sgcl_config, hidden_states, attentions, token_spans, head)
+            return {"loss": mlm_loss + sg_loss}
+        else:
+            return {}
 
 
 @TrainCallback.register("loreiba.model::write_model")

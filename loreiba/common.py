@@ -3,7 +3,18 @@ Some functions with broad application, mostly for manipulating tensors. These ar
 """
 from typing import Literal, Optional, Tuple
 
+import dill
 import torch
+
+
+def dill_dump(obj, filepath):
+    with open(filepath, "wb") as f:
+        dill.dump(obj, f)
+
+
+def dill_load(filepath):
+    with open(filepath, "rb") as f:
+        return dill.load(f)
 
 
 def get_range_vector(size: int, device: int) -> torch.Tensor:
