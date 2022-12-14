@@ -8,6 +8,9 @@ ai2-tango[torch,flax,transformers]==1.0.2
 allennlp-light==1.0.0
 stanza==1.4.2
 
+# infonce loss function
+info-nce-pytorch==0.1.4
+
 # other
 conllu==4.5.2
 black==22.10.0
