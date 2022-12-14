@@ -11,7 +11,7 @@ from transformers import AutoModel, BertConfig, RobertaConfig, RobertaModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
-from loreiba.sgcl.trees import SgclConfig, syntax_guided_loss
+from loreiba.sgcl.trees import SgclConfig, syntax_tree_guided_loss
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class SGCLModel(Model):
         mlm_preds = self.lm_head(x)
         if self.training and labels is not None:
             mlm_loss = self._mlm_loss(mlm_preds, labels)
-            sg_loss = syntax_guided_loss(self.sgcl_config, hidden_states, attentions, token_spans, head)
+            sg_loss = syntax_tree_guided_loss(self.sgcl_config, hidden_states, attentions, token_spans, head)
             return {"loss": mlm_loss + sg_loss}
         else:
             return {}
