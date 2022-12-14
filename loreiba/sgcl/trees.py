@@ -242,7 +242,27 @@ def generate_subtrees(config: TreeSgclConfig, head: torch.LongTensor) -> List[Li
 # loss calculation
 ################################################################################
 def assess_single_tree_sgcl_term(tree, batch_index, root_id, tokenwise_hidden_states, info_nce):
-    subtree_root_representations = [tokenwise_hidden_states[layer_num][batch_index, root_id] for layer_num in range(len(tokenwise_hidden_states))]
+    """
+    Calculate sim_tree according to equation 3
+    in section 3.1 of https://aclanthology.org/2022.findings-acl.191.pdf
+    """
+    num_layers = len(tokenwise_hidden_states)
+    # tensor of [num_layers, hidden_size]
+    root_z = torch.stack([tokenwise_hidden_states[layer_num][batch_index, root_id] for layer_num in range(num_layers)], dim=0)
+    child_ids = [k for k, v in tree.items() if v is not None]
+    # tensor of [num_children, num_layers, hidden_size]
+    child_zs = torch.stack([
+        torch.stack(
+            [tokenwise_hidden_states[layer_num][batch_index, child_id]
+             for layer_num in range(num_layers)], dim=0) for child_id in child_ids
+    ], dim=0)
+    # calculate exponentiated dot products between root and children
+    # shape is [num_layers, num_children]
+    dots = [torch.tensordot(root_z[i], child_zs[:, i, :], dims=([0],[1])) for i in range(num_layers)]
+    scores = torch.exp(dots)
+
+
+
 
 def assess_tree_sgcl(
     config: TreeSgclConfig,
