@@ -181,7 +181,8 @@ class TokenizePlus(Step):
             token_spans = token_spans_from_wordpiece_token_indexes(token_indexes)
             del r["offset_mapping"]
             del r["length"]
-            r[token_column] = sentence
+            # tokenizer might have truncated wordpieces--account for that here
+            r[token_column] = sentence[: len(token_spans) - 2]
             r["token_spans"] = token_spans
             output.append(dict(r))
 
