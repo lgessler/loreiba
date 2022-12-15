@@ -5,13 +5,14 @@ import torch
 import torch.nn as nn
 from tango.common.exceptions import ConfigurationError
 from tango.integrations.torch import Model, TrainCallback
-from tango.integrations.transformers import Config, Tokenizer
+from tango.integrations.transformers import Tokenizer
 from torch.nn import CrossEntropyLoss
-from transformers import AutoModel, BertConfig, RobertaConfig, RobertaModel
+from transformers import AutoModel, RobertaConfig, RobertaModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
-from loreiba.sgcl.trees import TreeSgclConfig, syntax_tree_guided_loss
+from loreiba.sgcl.trees.common import TreeSgclConfig
+from loreiba.sgcl.trees.loss import syntax_tree_guided_loss
 
 logger = logging.getLogger(__name__)
 
