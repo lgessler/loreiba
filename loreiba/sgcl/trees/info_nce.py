@@ -48,20 +48,22 @@ class InfoNCE(nn.Module):
         >>> output = loss(query, positive_key, negative_keys)
     """
 
-    def __init__(self, temperature=0.1, reduction='mean', negative_mode='unpaired'):
+    def __init__(self, temperature=0.1, reduction='mean', negative_mode='unpaired', top_k=None):
         super().__init__()
         self.temperature = temperature
         self.reduction = reduction
         self.negative_mode = negative_mode
+        self.top_k = top_k
 
     def forward(self, query, positive_key, negative_keys=None):
         return info_nce(query, positive_key, negative_keys,
                         temperature=self.temperature,
                         reduction=self.reduction,
-                        negative_mode=self.negative_mode)
+                        negative_mode=self.negative_mode,
+                        top_k=self.top_k)
 
 
-def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired'):
+def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired', top_k=None):
     # Check input dimensionality.
     if query.dim() != 2:
         raise ValueError('<query> must have 2 dimensions.')
@@ -104,6 +106,9 @@ def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction
             negative_logits = query @ transpose(negative_keys)
             negative_logits = negative_logits.squeeze(1)
 
+        if top_k is not None:
+            # dim 0 is layer, dim 1 is tree
+            negative_logits = negative_logits.topk(min(top_k, negative_logits.shape[1]), dim=1).values
         # First index in last dimension are the positive samples
         logits = torch.cat([positive_logit, negative_logits], dim=1)
         labels = torch.zeros(len(logits), dtype=torch.long, device=query.device)
