@@ -45,7 +45,7 @@ local roberta_config = {
 local model_path = "./workspace/models/" + language + "_" + stringifyObject(roberta_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local tree_sgcl_config = {
-    subtree_sampling_method: { type: "random", max_number: 5 },
+    subtree_sampling_method: "all",
     max_negative_per_subtree: 3,
 };
 local model = {
