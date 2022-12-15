@@ -6,6 +6,8 @@ from tango.integrations.torch import DataCollator
 from tango.integrations.transformers import Tokenizer
 from transformers import DataCollatorForLanguageModeling
 
+import loreiba.sgcl.trees as lst
+
 
 @DataCollator.register("loreiba.sgcl.collator::collator")
 class SgclDataCollator(DataCollator):

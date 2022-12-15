@@ -33,7 +33,6 @@ local max_length = 512;
 //     pretrained_model_name_or_path: model_path,
 // };
 
-
 // For non-pretrained
 local FROM_PRETRAINED = false;
 local roberta_config = {
@@ -45,16 +44,16 @@ local roberta_config = {
 };
 local model_path = "./workspace/models/" + language + "_" + stringifyObject(roberta_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
+local tree_sgcl_config = {
+    subtree_sampling_method: { type: "random", max_number: 5 },
+    max_negative_per_subtree: 3,
+};
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
     roberta_config: roberta_config,
     tokenizer: tokenizer,
     model_output_path: model_path,
-    sgcl_config: {
-        type: "tree",
-        subtree_sampling_method: "all",
-        max_negative_per_subtree: 3,
-    }
+    sgcl_config: tree_sgcl_config,
 };
 
 // --------------------------------------------------------------------------------

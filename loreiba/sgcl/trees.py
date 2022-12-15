@@ -3,8 +3,9 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import dill
 import torch
-from tango.common import FromParams, Registrable
+import torch.nn.functional as F
 from info_nce import InfoNCE
+from tango.common import FromParams, Registrable
 
 import loreiba.common as lc
 
@@ -99,7 +100,7 @@ def adjacent_ids_of_subtree(head_map: Dict[int, int | None], subtree_ids: Set[in
     return adjacent
 
 
-def get_all_subtrees(config: SgclConfig, head_map: Dict[int, int | None]) -> Dict[int, Dict[int, int | None]]:
+def get_all_subtrees(head_map: Dict[int, int | None]) -> Dict[int, Dict[int, int | None]]:
     all = {}
     for token_id in range(1, len(head_map.items())):
         all[token_id] = subtree_of_id(head_map, token_id)
@@ -107,7 +108,7 @@ def get_all_subtrees(config: SgclConfig, head_map: Dict[int, int | None]) -> Dic
 
 
 def get_eligible_subtrees(
-    config: SgclConfig, head_map: Dict[int, int | None], all_subtrees: Dict[int, Dict[int, int | None]]
+    head_map: Dict[int, int | None], all_subtrees: Dict[int, Dict[int, int | None]]
 ) -> List[Dict[str, Any]]:
     """
     Given a tensor of shape [token_len], return all subtrees and subtrees eligible for the tree-based contrastive loss.
@@ -221,9 +222,9 @@ def generate_subtrees(config: TreeSgclConfig, head: torch.LongTensor) -> List[Li
     head_map = [{0: None, **{i + 1: h.item() for i, h in enumerate(heads)}} for heads in padless_head]
 
     # get eligible subtrees for each sequence
-    all_subtree_lists = [get_all_subtrees(config, s) for s in head_map]
+    all_subtree_lists = [get_all_subtrees(s) for s in head_map]
     eligible_subtree_lists = [
-        get_eligible_subtrees(config, s, all_subtrees) for s, all_subtrees in zip(head_map, all_subtree_lists)
+        get_eligible_subtrees(s, all_subtrees) for s, all_subtrees in zip(head_map, all_subtree_lists)
     ]
     subtree_lists = [config.subtree_sampling_method.sample(subtree_list) for subtree_list in eligible_subtree_lists]
     tree_sets = []
@@ -241,38 +242,49 @@ def generate_subtrees(config: TreeSgclConfig, head: torch.LongTensor) -> List[Li
 ################################################################################
 # loss calculation
 ################################################################################
-def assess_single_tree_sgcl_term(tree, batch_index, root_id, tokenwise_hidden_states, info_nce):
+def get_root_z(tokenwise_hidden_states, root_id, batch_index):
+    num_layers = len(tokenwise_hidden_states)
+    root_z = torch.stack(
+        [tokenwise_hidden_states[layer_num][batch_index, root_id] for layer_num in range(num_layers)], dim=0
+    )
+    return root_z
+
+
+def get_single_tree_vecs(tree, batch_index, root_z, tokenwise_hidden_states):
     """
     Calculate sim_tree according to equation 3
     in section 3.1 of https://aclanthology.org/2022.findings-acl.191.pdf
     """
     num_layers = len(tokenwise_hidden_states)
     # tensor of [num_layers, hidden_size]
-    root_z = torch.stack([tokenwise_hidden_states[layer_num][batch_index, root_id] for layer_num in range(num_layers)], dim=0)
     child_ids = [k for k, v in tree.items() if v is not None]
     # tensor of [num_children, num_layers, hidden_size]
-    child_zs = torch.stack([
-        torch.stack(
-            [tokenwise_hidden_states[layer_num][batch_index, child_id]
-             for layer_num in range(num_layers)], dim=0) for child_id in child_ids
-    ], dim=0)
+    child_zs = torch.stack(
+        [
+            torch.stack(
+                [tokenwise_hidden_states[layer_num][batch_index, child_id] for layer_num in range(num_layers)], dim=0
+            )
+            for child_id in child_ids
+        ],
+        dim=0,
+    )
     # calculate exponentiated dot products between root and children
     # shape is [num_layers, num_children]
-    dots = [torch.tensordot(root_z[i], child_zs[:, i, :], dims=([0],[1])) for i in range(num_layers)]
-    scores = torch.exp(dots)
-
-
+    dots = torch.stack([torch.tensordot(root_z[i], child_zs[:, i, :], dims=([0], [1])) for i in range(num_layers)])
+    proportions = dots.softmax(dim=1)
+    # this is the right hand argument of cosine in sim_tree in equation 3
+    subtree_z = (proportions.swapaxes(1, 0).unsqueeze(-1) * child_zs).sum(0)
+    return subtree_z
 
 
 def assess_tree_sgcl(
     config: TreeSgclConfig,
     tree_sets_for_batch: List[List[Dict[str, Any]]],
     hidden_states: List[torch.Tensor],
-    attentions: List[torch.Tensor],
     token_spans: torch.LongTensor,
 ) -> float:
     loss = 0.0
-    info_nce = InfoNCE(temperature=0.1, reduction='mean', negative_mode='paired')
+    info_nce = InfoNCE(temperature=0.1, reduction="mean", negative_mode="paired")
     tokenwise_hidden_states = [lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states]
 
     # Iterate over items in the batch
@@ -280,12 +292,17 @@ def assess_tree_sgcl(
         for tree_set in tree_sets:
             # This is 1-indexed, BUT, this actually doesn't need modification because the [CLS] token has shifted
             # everything rightward
-            root_id = tree_set['root_id']
-            positive = tree_set['positive']
-            negatives = tree_set['negatives']
-            for tree in [positive] + negatives:
-                loss += assess_single_tree_sgcl_term(tree, i, root_id, tokenwise_hidden_states, info_nce)
-            subtree_root_representations = [tokenwise_hidden_states[layer_num][i, root_id] for layer_num in range(len(tokenwise_hidden_states))]
+            root_id = tree_set["root_id"]
+            positive = tree_set["positive"]
+            negatives = tree_set["negatives"]
+            root_z = get_root_z(tokenwise_hidden_states, root_id, i)
+            positive_sims = get_single_tree_vecs(positive, i, root_z, tokenwise_hidden_states)
+            negative_sims_list = torch.stack(
+                [get_single_tree_vecs(negative, i, root_z, tokenwise_hidden_states) for negative in negatives], dim=1
+            )
+            nce_term = info_nce(root_z, positive_sims, negative_sims_list)
+            loss += nce_term
+    return loss / len(tree_sets_for_batch)
 
 
 if __name__ == None:
@@ -294,17 +311,17 @@ if __name__ == None:
     hidden_states = lc.dill_load("/tmp/hidden_states")
     token_spans = lc.dill_load("/tmp/token_spans")
     head = lc.dill_load("/tmp/head")
-    head_map = {0: None, **{i + 1: h.item() for i, h in enumerate(head[0])}}
-    all_subtrees = get_all_subtrees(config, head_map)
-    eligible_subtrees = sorted(get_eligible_subtrees(config, head_map, all_subtrees), key=lambda x: x["root_id"])
-    output = generate_negative_trees(config, all_subtrees, **eligible_subtrees[2])
+    # head_map = {0: None, **{i + 1: h.item() for i, h in enumerate(head[0])}}
+    # all_subtrees = get_all_subtrees(config, head_map)
+    # eligible_subtrees = sorted(get_eligible_subtrees(config, head_map, all_subtrees), key=lambda x: x["root_id"])
+    # output = generate_negative_trees(config, all_subtrees, **eligible_subtrees[2])
 
     tree_sets_for_batch = generate_subtrees(config, head)
     tree_sets_for_batch[0]
     assess_tree_sgcl(config, tree_sets_for_batch, hidden_states, attentions, token_spans)
     tokenwise_hidden_states[0].shape
 
-    info_nce = InfoNCE(temperature=0.1, reduction='mean', negative_mode='paired')
+    info_nce = InfoNCE(temperature=0.1, reduction="mean", negative_mode="paired")
 
 
 ################################################################################
@@ -313,9 +330,8 @@ if __name__ == None:
 def syntax_tree_guided_loss(
     config: TreeSgclConfig,
     hidden_states: List[torch.Tensor],
-    attentions: List[torch.Tensor],
-    token_spans: torch.LongTensor,
     head: torch.LongTensor,
+    token_spans: torch.LongTensor,
 ) -> float:
     """
     Compute the tree-guided contrastive loss presented in Zhang et al. 2022
@@ -357,8 +373,8 @@ def syntax_tree_guided_loss(
     # lc.dill_dump(hidden_states, "/tmp/hidden_states")
     # lc.dill_dump(token_spans, "/tmp/token_spans")
     # lc.dill_dump(head, "/tmp/head")
-    tree_sets = generate_subtrees(config, head)
-    return assess_tree_sgcl(config, tree_sets, hidden_states, attentions, token_spans)
+    tree_sets_for_batch = generate_subtrees(config, head)
+    return assess_tree_sgcl(config, tree_sets_for_batch, hidden_states, token_spans)
 
 
 # subtree(heads, 8)
