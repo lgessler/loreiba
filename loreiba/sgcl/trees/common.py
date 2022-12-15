@@ -49,5 +49,4 @@ class TreeSgclConfig(FromParams):
         self.min_subtree_size = min_subtree_size
         self.max_replacements = max_replacements
         self.max_retry = max_retry
-        self.x = x
         self.subtree_sampling_method = subtree_sampling_method
