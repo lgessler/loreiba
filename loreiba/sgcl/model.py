@@ -26,7 +26,7 @@ class SGCLModel(Model):
     def __init__(
         self,
         tokenizer: Tokenizer,
-        sgcl_config: TreeSgclConfig,
+        tree_sgcl_config: TreeSgclConfig,
         pretrained_model_name_or_path: Optional[str] = None,
         roberta_config: Dict[str, Any] = None,
         *args,
@@ -58,7 +58,7 @@ class SGCLModel(Model):
             self.encoder = RobertaModel(config=config, add_pooling_layer=False)
         self.lm_head = RobertaLMHead(config=config)
         self.pad_id = tokenizer.pad_token_id
-        self.sgcl_config = sgcl_config
+        self.tree_sgcl_config = tree_sgcl_config
 
     def _mlm_loss(self, preds, labels):
         loss_fct = CrossEntropyLoss(ignore_index=-100)
@@ -78,7 +78,7 @@ class SGCLModel(Model):
         mlm_preds = self.lm_head(x)
         if self.training and labels is not None:
             mlm_loss = self._mlm_loss(mlm_preds, labels)
-            sg_loss = syntax_tree_guided_loss(self.sgcl_config, hidden_states, head, token_spans)
+            sg_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, head, token_spans)
             return {"loss": mlm_loss + sg_loss}
         else:
             return {}

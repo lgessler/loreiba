@@ -53,7 +53,7 @@ local model = {
     roberta_config: roberta_config,
     tokenizer: tokenizer,
     model_output_path: model_path,
-    sgcl_config: tree_sgcl_config,
+    tree_sgcl_config: tree_sgcl_config,
 };
 
 // --------------------------------------------------------------------------------
