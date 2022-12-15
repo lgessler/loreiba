@@ -48,7 +48,7 @@ class InfoNCE(nn.Module):
         >>> output = loss(query, positive_key, negative_keys)
     """
 
-    def __init__(self, temperature=0.1, reduction='mean', negative_mode='unpaired', top_k=None):
+    def __init__(self, temperature=0.1, reduction="mean", negative_mode="unpaired", top_k=None):
         super().__init__()
         self.temperature = temperature
         self.reduction = reduction
@@ -56,38 +56,46 @@ class InfoNCE(nn.Module):
         self.top_k = top_k
 
     def forward(self, query, positive_key, negative_keys=None):
-        return info_nce(query, positive_key, negative_keys,
-                        temperature=self.temperature,
-                        reduction=self.reduction,
-                        negative_mode=self.negative_mode,
-                        top_k=self.top_k)
+        return info_nce(
+            query,
+            positive_key,
+            negative_keys,
+            temperature=self.temperature,
+            reduction=self.reduction,
+            negative_mode=self.negative_mode,
+            top_k=self.top_k,
+        )
 
 
-def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired', top_k=None):
+def info_nce(
+    query, positive_key, negative_keys=None, temperature=0.1, reduction="mean", negative_mode="unpaired", top_k=None
+):
     # Check input dimensionality.
     if query.dim() != 2:
-        raise ValueError('<query> must have 2 dimensions.')
+        raise ValueError("<query> must have 2 dimensions.")
     if positive_key.dim() != 2:
-        raise ValueError('<positive_key> must have 2 dimensions.')
+        raise ValueError("<positive_key> must have 2 dimensions.")
     if negative_keys is not None:
-        if negative_mode == 'unpaired' and negative_keys.dim() != 2:
+        if negative_mode == "unpaired" and negative_keys.dim() != 2:
             raise ValueError("<negative_keys> must have 2 dimensions if <negative_mode> == 'unpaired'.")
-        if negative_mode == 'paired' and negative_keys.dim() != 3:
+        if negative_mode == "paired" and negative_keys.dim() != 3:
             raise ValueError("<negative_keys> must have 3 dimensions if <negative_mode> == 'paired'.")
 
     # Check matching number of samples.
     if len(query) != len(positive_key):
-        raise ValueError('<query> and <positive_key> must must have the same number of samples.')
+        raise ValueError("<query> and <positive_key> must must have the same number of samples.")
     if negative_keys is not None:
-        if negative_mode == 'paired' and len(query) != len(negative_keys):
-            raise ValueError("If negative_mode == 'paired', then <negative_keys> must have the same number of samples as <query>.")
+        if negative_mode == "paired" and len(query) != len(negative_keys):
+            raise ValueError(
+                "If negative_mode == 'paired', then <negative_keys> must have the same number of samples as <query>."
+            )
 
     # Embedding vectors should have same number of components.
     if query.shape[-1] != positive_key.shape[-1]:
-        raise ValueError('Vectors of <query> and <positive_key> should have the same number of components.')
+        raise ValueError("Vectors of <query> and <positive_key> should have the same number of components.")
     if negative_keys is not None:
         if query.shape[-1] != negative_keys.shape[-1]:
-            raise ValueError('Vectors of <query> and <negative_keys> should have the same number of components.')
+            raise ValueError("Vectors of <query> and <negative_keys> should have the same number of components.")
 
     # Normalize to unit vectors
     query, positive_key, negative_keys = normalize(query, positive_key, negative_keys)
@@ -97,11 +105,11 @@ def info_nce(query, positive_key, negative_keys=None, temperature=0.1, reduction
         # Cosine between positive pairs
         positive_logit = torch.sum(query * positive_key, dim=1, keepdim=True)
 
-        if negative_mode == 'unpaired':
+        if negative_mode == "unpaired":
             # Cosine between all query-negative combinations
             negative_logits = query @ transpose(negative_keys)
 
-        elif negative_mode == 'paired':
+        elif negative_mode == "paired":
             query = query.unsqueeze(1)
             negative_logits = query @ transpose(negative_keys)
             negative_logits = negative_logits.squeeze(1)

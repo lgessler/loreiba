@@ -1,11 +1,11 @@
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import torch
-from info_nce import InfoNCE
 
 import loreiba.common as lc
 from loreiba.sgcl.trees.common import TreeSgclConfig
 from loreiba.sgcl.trees.generation import generate_subtrees
+from loreiba.sgcl.trees.info_nce import InfoNCE
 
 
 def get_root_z(tokenwise_hidden_states, root_id, batch_index):
@@ -50,7 +50,9 @@ def assess_tree_sgcl(
     token_spans: torch.LongTensor,
 ) -> float:
     loss = 0.0
-    info_nce = InfoNCE(temperature=0.1, reduction="mean", negative_mode="paired")
+    info_nce = InfoNCE(
+        temperature=0.1, reduction="mean", negative_mode="paired", top_k=config.max_negatives_used_in_loss
+    )
     tokenwise_hidden_states = [lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states]
 
     # Iterate over items in the batch
@@ -82,7 +84,6 @@ if __name__ == None:
     # output = generate_negative_trees(config, all_subtrees, **eligible_subtrees[2])
 
     tree_sets_for_batch = generate_subtrees(config, head)
-    tree_sets_for_batch[12]
     assess_tree_sgcl(config, tree_sets_for_batch, hidden_states, token_spans)
 
 
@@ -130,11 +131,10 @@ def syntax_tree_guided_loss(
     # print(head.shape)
     # print(head[0])
     # print(config)
-    lc.dill_dump(config, "/tmp/config")
-    lc.dill_dump(hidden_states, "/tmp/hidden_states")
-    lc.dill_dump(token_spans, "/tmp/token_spans")
-    lc.dill_dump(head, "/tmp/head")
-    assert False
+    # lc.dill_dump(config, "/tmp/config")
+    # lc.dill_dump(hidden_states, "/tmp/hidden_states")
+    # lc.dill_dump(token_spans, "/tmp/token_spans")
+    # lc.dill_dump(head, "/tmp/head")
     tree_sets_for_batch = generate_subtrees(config, head)
     return assess_tree_sgcl(config, tree_sets_for_batch, hidden_states, token_spans)
 

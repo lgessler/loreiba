@@ -41,12 +41,45 @@ class TreeSgclConfig(FromParams):
         self,
         max_negative_per_subtree: int = 3,
         min_subtree_size: int = 2,
+        max_subtree_size: int = 10,
         max_replacements: int = 3,
-        max_retry: int = 10,
+        max_node_count_difference: int = 1,
+        max_retry: int = 20,
+        max_negatives_used_in_loss: int = 3,
         subtree_sampling_method: SubtreeSamplingMethod = AllSubtreeSamplingMethod(),
     ):
+        """
+        Args:
+            max_negative_per_subtree:
+                The maximum number of negative trees we will generate for any given positive tree.
+                Defaults to 3.
+            min_subtree_size:
+                The minimum size (inclusive) of a subtree that will be used for the contrastive learning objective.
+                Defaults to 2.
+            max_subtree_size:
+                The maximum size (inclusive) of a subtree that will be used for the contrastive learning objective.
+                Defaults to 10.
+            max_replacements:
+                The maximum number of node replacements we will make while generating a negative tree.
+                Defaults to 3.
+            max_node_count_difference:
+                The maximum difference in node count that we will tolerate between a negative and positive tree.
+                Defaults to 1.
+            max_retry:
+                The maximum number of times we will try to generate another negative tree before giving up.
+                This is needed because we are generating negative trees randomly and not by sampling the
+                entire set of possible negative trees.
+            max_negatives_used_in_loss:
+                Specifies the maximum number of negative trees to use in the loss calculation.
+                Trees will be ranked according to tree_sim first.
+            subtree_sampling_method:
+                See `SubtreeSamplingMethod`.
+        """
         self.max_negative_per_subtree = max_negative_per_subtree
         self.min_subtree_size = min_subtree_size
+        self.max_subtree_size = max_subtree_size
         self.max_replacements = max_replacements
+        self.max_node_count_difference = max_node_count_difference
         self.max_retry = max_retry
+        self.max_negatives_used_in_loss = max_negatives_used_in_loss
         self.subtree_sampling_method = subtree_sampling_method

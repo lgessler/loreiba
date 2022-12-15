@@ -65,8 +65,8 @@ def get_eligible_subtrees(
         subtree = all_subtrees[token_id]
         # IDs that are not in the subtree but neighbor at least one token in the subtree
         adjacent_ids = adjacent_ids_of_subtree(head_map, set(subtree.keys()))
-        # We need at least one token to replace and one token to stay the same
-        if len(subtree) < config.min_subtree_size:
+        # Node count limit for subtree: should be, by default, in the interval [2, 10].
+        if not (config.min_subtree_size <= len(subtree) <= config.max_subtree_size):
             continue
         # We need at least one token to provide as a replacement
         if len(adjacent_ids) < 1:
@@ -111,8 +111,9 @@ def generate_negative_trees(
     negatives = []
     retry_count = 0
     while len(negatives) < config.max_negative_per_subtree:
-        targets = tuple(sorted(random.sample(all_replacement_targets, sample_size)))
-        values = tuple(sorted(random.sample(all_replacement_values, sample_size)))
+        random_sample_size = random.randint(1, sample_size)
+        targets = tuple(sorted(random.sample(all_replacement_targets, random_sample_size)))
+        values = tuple(sorted(random.sample(all_replacement_values, random_sample_size)))
 
         # We've sampled something we already saw. Stop trying if we've exceeded the limit, else try again.
         if (targets, values) in already_done:
@@ -143,6 +144,10 @@ def generate_negative_trees(
                 if head_id is None:
                     head_id = subtree_head_id
                 negative_tree[token_id] = head_id
+        # Check the difference in sizes and reject if it's beyond our tolerance (defaults to 1)
+        if abs(len(negative_tree) - len(subtree)) > config.max_node_count_difference:
+            retry_count += 1
+            continue
         negatives.append(negative_tree)
 
     return {
@@ -178,6 +183,8 @@ def generate_subtrees(config: TreeSgclConfig, head: torch.LongTensor) -> List[Li
         # For each subtree in the sentence...
         for subtree in subtree_list:
             # Collect negative trees with the positive tree
-            positive_and_negative_trees.append(generate_negative_trees(config, all_subtrees, **subtree))
+            result = generate_negative_trees(config, all_subtrees, **subtree)
+            if len(result["negatives"]) > 1:
+                positive_and_negative_trees.append(result)
         tree_sets.append(positive_and_negative_trees)
     return tree_sets
