@@ -77,7 +77,7 @@ class SGCLModel(Model):
         hidden_states = outputs.hidden_states[1:]
         x = outputs.last_hidden_state
         mlm_preds = self.lm_head(x)
-        if self.training and labels is not None:
+        if labels is not None:
             mlm_loss = self._mlm_loss(mlm_preds, labels)
             sg_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
             return {"loss": mlm_loss + sg_loss}
