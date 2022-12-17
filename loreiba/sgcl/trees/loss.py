@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import torch
+import torch.nn.functional as F
 
 import loreiba.common as lc
 from loreiba.sgcl.trees.common import TreeSgclConfig
@@ -34,7 +35,8 @@ def get_single_tree_vecs(tree, batch_index, root_z, tokenwise_hidden_states):
         ],
         dim=0,
     )
-    # calculate exponentiated dot products between root and children
+
+    # calculate dot products between root and children and softmax them
     # shape is [num_layers, num_children]
     dots = torch.stack([torch.tensordot(root_z[i], child_zs[:, i, :], dims=([0], [1])) for i in range(num_layers)])
     proportions = dots.softmax(dim=1)
@@ -56,6 +58,7 @@ def assess_tree_sgcl(
     tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
 
     # Iterate over items in the batch
+    print([len(s) for s in tree_sets_for_batch])
     for i, tree_sets in enumerate(tree_sets_for_batch):
         for tree_set in tree_sets:
             # This is 1-indexed, BUT, this actually doesn't need modification because the [CLS] token has shifted
@@ -70,6 +73,67 @@ def assess_tree_sgcl(
             )
             nce_term = info_nce(root_z, positive_vecs, negative_vecs_list)
             loss += nce_term
+    return loss / len(tree_sets_for_batch)
+
+
+def assess_tree_sgcl_batched(
+    config: TreeSgclConfig,
+    tree_sets_for_batch: List[List[Dict[str, Any]]],
+    hidden_states: List[torch.Tensor],
+    token_spans: torch.LongTensor,
+) -> float:
+    tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
+
+    num_layers, batch_size, sequence_length, hidden_dim = tokenwise_hidden_states.shape
+    root_ids = []
+    positives = []
+    negative_lists = []
+    batch_mapping = {}
+    j = 0
+    for i, tree_sets in enumerate(tree_sets_for_batch):
+        for tree_set in tree_sets:
+            root_ids.append(tree_set["root_id"])
+            positives.append(tree_set["positive"])
+            negative_lists.append(tree_set["negatives"])
+            batch_mapping[j] = i
+            j += 1
+
+    # shape: [num_layers, num_subtrees, hidden_dim]
+    root_zs = torch.stack(
+        [tokenwise_hidden_states[:, batch_mapping[i], root_id, :] for i, root_id in enumerate(root_ids)], dim=1
+    )
+
+    # shape: [num_layers, num_subtrees, hidden_dim]
+    positive_vecs = torch.stack(
+        [
+            get_single_tree_vecs(positives[i], batch_mapping[i], root_zs[:, i], tokenwise_hidden_states)
+            for i in range(len(root_ids))
+        ],
+        dim=1,
+    )
+    # shape: [num_layers, num_subtrees, max_negatives, hidden_dim]
+    negative_vecs = torch.zeros(
+        (num_layers, len(root_ids), config.max_negative_per_subtree, hidden_dim),
+        dtype=root_zs.dtype,
+        device=positive_vecs.device,
+    )
+    for i, negatives in enumerate(negative_lists):
+        negative_vec_set = torch.stack(
+            [
+                get_single_tree_vecs(negative, batch_mapping[i], root_zs[:, i], tokenwise_hidden_states)
+                for negative in negatives
+            ],
+            dim=1,
+        )
+        negative_vecs[:, i, : negative_vec_set.shape[1], :] = negative_vec_set
+
+    loss = 0.0
+    info_nce = InfoNCE(
+        temperature=0.1, reduction="mean", negative_mode="paired", top_k=config.max_negatives_used_in_loss
+    )
+    for i in range(positive_vecs.shape[1]):
+        nce_term = info_nce(root_zs[:, i, :], positive_vecs[:, i, :], negative_vecs[:, i, : len(negative_lists[i]), :])
+        loss += nce_term
     return loss / len(tree_sets_for_batch)
 
 
