@@ -2,6 +2,7 @@
 // Language settings
 // --------------------------------------------------------------------------------
 local language = std.extVar("LANGUAGE");
+local experiment_name = std.extVar("NAME");
 local language_code_index = {
     "coptic": "cop",
     "greek": "grc",
@@ -42,11 +43,11 @@ local roberta_config = {
     intermediate_size: 512,
     max_position_embeddings: max_length,
 };
-local model_path = "./workspace/models/" + language + "_" + stringifyObject(roberta_config);
+local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(roberta_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local tree_sgcl_config = {
     subtree_sampling_method: {type: "random", max_number: 3},
-    max_negative_per_subtree: 3,
+    max_negative_per_subtree: 10
 };
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
