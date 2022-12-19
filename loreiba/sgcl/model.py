@@ -11,6 +11,8 @@ from transformers import AutoModel, RobertaConfig, RobertaModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
+from loreiba.sgcl.phrases.common import PhraseSgclConfig
+from loreiba.sgcl.phrases.loss import phrase_guided_loss
 from loreiba.sgcl.trees.common import TreeSgclConfig
 from loreiba.sgcl.trees.loss import syntax_tree_guided_loss
 
@@ -27,7 +29,8 @@ class SGCLModel(Model):
     def __init__(
         self,
         tokenizer: Tokenizer,
-        tree_sgcl_config: TreeSgclConfig,
+        tree_sgcl_config: Optional[TreeSgclConfig] = None,
+        phrase_sgcl_config: Optional[PhraseSgclConfig] = None,
         pretrained_model_name_or_path: Optional[str] = None,
         roberta_config: Dict[str, Any] = None,
         *args,
@@ -60,6 +63,7 @@ class SGCLModel(Model):
         self.lm_head = RobertaLMHead(config=config)
         self.pad_id = tokenizer.pad_token_id
         self.tree_sgcl_config = tree_sgcl_config
+        self.phrase_sgcl_config = phrase_sgcl_config
 
     def _mlm_loss(self, preds, labels):
         loss_fct = CrossEntropyLoss(ignore_index=-100)
@@ -75,12 +79,16 @@ class SGCLModel(Model):
             output_attentions=True,
         )
         hidden_states = outputs.hidden_states[1:]
+        attentions = outputs.attentions
         x = outputs.last_hidden_state
         mlm_preds = self.lm_head(x)
         if labels is not None:
-            mlm_loss = self._mlm_loss(mlm_preds, labels)
-            sg_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
-            return {"loss": mlm_loss + sg_loss}
+            loss = self._mlm_loss(mlm_preds, labels)
+            if self.tree_sgcl_config is not None:
+                loss += syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
+            if self.phrase_sgcl_config is not None:
+                loss += phrase_guided_loss(self.phrase_sgcl_config, attentions, token_spans, head)
+            return {"loss": loss}
         else:
             return {}
 

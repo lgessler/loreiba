@@ -49,12 +49,15 @@ local tree_sgcl_config = {
     subtree_sampling_method: {type: "random", max_number: 3},
     max_negative_per_subtree: 10
 };
+// just use defaults
+local phrase_sgcl_config = {};
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
     roberta_config: roberta_config,
     tokenizer: tokenizer,
     model_output_path: model_path,
-    tree_sgcl_config: tree_sgcl_config,
+    //tree_sgcl_config: tree_sgcl_config,
+    phrase_sgcl_config: phrase_sgcl_config,
 };
 
 // --------------------------------------------------------------------------------
