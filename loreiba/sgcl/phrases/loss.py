@@ -10,15 +10,17 @@ from loreiba.sgcl.generation_common import get_all_subtrees, get_head_map
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 
 
-class JSD(nn.Module):
-    def __init__(self):
-        super(JSD, self).__init__()
-        self.kl = nn.KLDivLoss(reduction="batchmean", log_target=True)
+def jsd(p: torch.Tensor, q: torch.Tensor):
+    p, q = p.view(-1, p.size(-1)), q.view(-1, q.size(-1))
+    m = (0.5 * (p + q)).log()
+    return 0.5 * (F.kl_div(m, p.log(), reduction="batchmean") + F.kl_div(m, q.log(), reduction="batchmean"))
 
-    def forward(self, p: torch.tensor, q: torch.tensor):
-        p, q = p.view(-1, p.size(-1)), q.view(-1, q.size(-1))
-        m = (0.5 * (p + q)).log()
-        return 0.5 * (self.kl(m, p.log()) + self.kl(m, q.log()))
+
+def compute_info_nce(combined_sims: torch.Tensor) -> float:
+    # take the softmax for InfoNCE
+    softmaxed = -F.log_softmax(combined_sims, dim=1)
+    loss = softmaxed[:, 0]
+    return loss.mean().item()
 
 
 def depth_of_tree(root: int, t: Dict[int, int | None]) -> int:
@@ -44,7 +46,6 @@ def compute_phrase_loss(
     temperature: float = 0.1,
 ) -> List[float]:
     losses = []
-    jsd = JSD()
     wordpiece_length = max(t2wp.values()) + 1
 
     shuffled_subtrees = list(all_subtrees.items())
@@ -82,11 +83,7 @@ def compute_phrase_loss(
         negative_sims = torch.stack(negative_sims, dim=1)
 
         combined_sims = torch.hstack((positive_sim.reshape(-1, 1), negative_sims)) / temperature
-        # take the softmax for InfoNCE
-        softmaxed = -F.log_softmax(combined_sims, dim=1)
-        #
-        loss = softmaxed[:, 0]
-        losses.append(loss.mean().item())
+        losses.append(compute_info_nce(combined_sims))
 
     # one idea:
     # - preprocess by generating token IDs
