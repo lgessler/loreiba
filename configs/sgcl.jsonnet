@@ -49,8 +49,9 @@ local tree_sgcl_config = {
     subtree_sampling_method: {type: "random", max_number: 3},
     max_negative_per_subtree: 10
 };
-// just use defaults
-local phrase_sgcl_config = {};
+local phrase_sgcl_config = {
+    max_subtrees_per_sentence: 5,
+};
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
     roberta_config: roberta_config,
@@ -75,7 +76,7 @@ local BERT_total_instances = BERT_steps * BERT_batch_size;
 // our settings
 local batch_size = 64;
 local instances_per_epoch = 256000;
-local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
+local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 64;  // 16 is an extra reduction we're making
 
 local validate_every = 20000;
 

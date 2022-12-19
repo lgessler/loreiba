@@ -83,6 +83,11 @@ def compute_phrase_loss(
         loss = softmaxed[:, 0]
         losses.append(loss.mean().item())
 
+    # one idea:
+    # - preprocess by generating token IDs
+    # - batch everything together in a [batch_count, max_num_subtrees, max_num_neg]
+    # - use these indices to get the right attentions and batch as much as possible
+
     return sum(losses) / len(losses) if len(losses) > 0 else 0.0
 
 
