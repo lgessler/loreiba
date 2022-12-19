@@ -47,7 +47,12 @@ def compute_phrase_loss(
     jsd = JSD()
     wordpiece_length = max(t2wp.values()) + 1
 
-    for root, subtree in all_subtrees.items():
+    shuffled_subtrees = list(all_subtrees.items())
+    random.shuffle(shuffled_subtrees)
+
+    for root, subtree in shuffled_subtrees:
+        if len(losses) > config.max_subtrees_per_sentence:
+            break
         depth = depth_of_tree(root, subtree)
         if depth > config.max_subtree_height:
             continue
