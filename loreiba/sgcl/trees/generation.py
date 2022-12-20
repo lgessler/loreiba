@@ -1,4 +1,5 @@
 import random
+from functools import cache
 from typing import Any, Dict, List, Set
 
 import torch
@@ -108,6 +109,8 @@ def generate_negative_trees(
     }
 
 
+# TODO: is this ok?
+@cache
 def generate_subtrees(config: TreeSgclConfig, head: torch.LongTensor) -> List[List[Dict[str, Any]]]:
     """
     Generate pairs of positive and negative trees
