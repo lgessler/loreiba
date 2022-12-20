@@ -7,133 +7,82 @@ import torch.nn.functional as F
 import loreiba.common as lc
 from loreiba.sgcl.trees.common import TreeSgclConfig
 from loreiba.sgcl.trees.generation import generate_subtrees
-from loreiba.sgcl.trees.info_nce import InfoNCE
 
 
-def get_root_z(tokenwise_hidden_states, root_id, batch_index):
-    num_layers = len(tokenwise_hidden_states)
-    root_z = torch.stack(
-        [tokenwise_hidden_states[layer_num][batch_index, root_id] for layer_num in range(num_layers)], dim=0
-    )
-    return root_z
+def masked_softmax(t: torch.FloatTensor, mask: torch.BoolTensor, dim: int):
+    return F.softmax(t.masked_fill(~mask, float("-inf")), dim=dim)
 
 
-def get_single_tree_vecs(tree, batch_index, root_z, tokenwise_hidden_states):
-    """
-    Calculate sim_tree according to equation 3
-    in section 3.1 of https://aclanthology.org/2022.findings-acl.191.pdf
-    """
-    num_layers = len(tokenwise_hidden_states)
-    # tensor of [num_layers, hidden_size]
-    child_ids = [k for k, v in tree.items() if v is not None]
-    # tensor of [num_children, num_layers, hidden_size]
-    child_zs = torch.stack(
-        [
-            torch.stack(
-                [tokenwise_hidden_states[layer_num][batch_index, child_id] for layer_num in range(num_layers)], dim=0
-            )
-            for child_id in child_ids
-        ],
-        dim=0,
-    )
-
-    # calculate dot products between root and children and softmax them
-    # shape is [num_layers, num_children]
-    dots = torch.stack([torch.tensordot(root_z[i], child_zs[:, i, :], dims=([0], [1])) for i in range(num_layers)])
-    proportions = dots.softmax(dim=1)
-    # this is the right hand argument of cosine in sim_tree in equation 3
-    subtree_z = (proportions.swapaxes(1, 0).unsqueeze(-1) * child_zs).sum(0)
-    return subtree_z
+def masked_log_softmax(t: torch.FloatTensor, mask: torch.BoolTensor, dim: int):
+    return F.log_softmax(t.masked_fill(~mask, float("-inf")), dim=dim)
 
 
-def assess_tree_sgcl(
-    config: TreeSgclConfig,
-    tree_sets_for_batch: List[List[Dict[str, Any]]],
-    hidden_states: List[torch.Tensor],
-    token_spans: torch.LongTensor,
-) -> float:
-    loss = 0.0
-    info_nce = InfoNCE(
-        temperature=0.1, reduction="mean", negative_mode="paired", top_k=config.max_negatives_used_in_loss
-    )
-    tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
-
-    # Iterate over items in the batch
-    print([len(s) for s in tree_sets_for_batch])
-    for i, tree_sets in enumerate(tree_sets_for_batch):
-        for tree_set in tree_sets:
-            # This is 1-indexed, BUT, this actually doesn't need modification because the [CLS] token has shifted
-            # everything rightward
-            root_id = tree_set["root_id"]
-            positive = tree_set["positive"]
-            negatives = tree_set["negatives"]
-            root_z = get_root_z(tokenwise_hidden_states, root_id, i)
-            positive_vecs = get_single_tree_vecs(positive, i, root_z, tokenwise_hidden_states)
-            negative_vecs_list = torch.stack(
-                [get_single_tree_vecs(negative, i, root_z, tokenwise_hidden_states) for negative in negatives], dim=1
-            )
-            nce_term = info_nce(root_z, positive_vecs, negative_vecs_list)
-            loss += nce_term
-    return loss / len(tree_sets_for_batch)
-
-
-def assess_tree_sgcl_batched(
-    config: TreeSgclConfig,
-    tree_sets_for_batch: List[List[Dict[str, Any]]],
-    hidden_states: List[torch.Tensor],
-    token_spans: torch.LongTensor,
-    temperature: float = 0.1,
-) -> float:
-    device = hidden_states[0].device
-    tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
-
-    num_layers, batch_size, sequence_length, hidden_dim = tokenwise_hidden_states.shape
+def _pack_trees_into_index_tensors(
+    config: TreeSgclConfig, tree_sets_for_batch: List[List[Dict[str, Any]]], batch_size: int, device: torch.device
+):
     root_ids = defaultdict(list)
     positives = defaultdict(list)
     negative_lists = defaultdict(list)
-    total_subtrees = 0
-    max_positive_ids = 0
-    max_negatives = 0
-    max_negative_ids = 0
+
+    # Track these quantities, because they will be needed to determine the dimensions of the padded tensors
+
+    all_negative_ids = [
+        [k for k in negative.keys()]
+        for tree_sets in tree_sets_for_batch
+        for tree_set in tree_sets
+        for negative in tree_set["negatives"]
+    ]
+    all_positive_ids = [
+        [k for k in tree_set["positive"].keys()] for tree_sets in tree_sets_for_batch for tree_set in tree_sets
+    ]
+
+    # greatest number of ids in a positive tree
+    max_positive_ids = max(len(p) for p in all_positive_ids)
+    # greatest number of ids in a negative tree
+    max_negative_ids = max(len(n) for n in all_negative_ids)
+    # greatest number of negative trees in a tree set
+    max_negative_trees = max(len(tree_set["negatives"]) for tree_sets in tree_sets_for_batch for tree_set in tree_sets)
+
+    # Iterate through each batch item
     for i, tree_sets in enumerate(tree_sets_for_batch):
+        # If we have no tree sets, there's nothing to do
         if len(tree_sets) == 0:
             continue
-        all_negative_ids = [
-            [[k for k in negative.keys()] for negative in tree_set["negatives"]] for tree_set in tree_sets
-        ]
-        max_positive_length = max(len(tree_set["positive"].keys()) for tree_set in tree_sets)
-        max_negative_length = max(max([len(negative) for negative in negatives]) for negatives in all_negative_ids)
-        max_negative_count = max(len(negatives) for negatives in all_negative_ids)
+
         for tree_set in tree_sets:
+            # record the root
             root_id = tree_set["root_id"]
             root_ids[i].append(root_id)
-            positive_ids = [root_id] + [k for k in tree_set["positive"].keys() if k != root_id]
-            positive_ids = positive_ids + ([-1] * (max_positive_length - len(positive_ids)))
+
+            # record the padded positive ids
+            positive_ids = ([root_id] if config.include_root_in_sims else []) + [
+                k for k in tree_set["positive"].keys() if k != root_id
+            ]
+            positive_ids = positive_ids + ([-1] * (max_positive_ids - len(positive_ids)))
             positives[i].append(positive_ids)
+
+            # pad the negative ids
             negative_ids = [
-                [root_id] + [k for k in negative.keys() if k != root_id] for negative in tree_set["negatives"]
+                ([root_id] if config.include_root_in_sims else []) + [k for k in negative.keys() if k != root_id]
+                for negative in tree_set["negatives"]
             ]
-            padded_negative_ids = [
-                ([k for k in ids] + ([-1] * (max_negative_length - len(ids)))) for ids in negative_ids
-            ]
-            while len(padded_negative_ids) < max_negative_count:
-                padded_negative_ids.append([-1] * max_negative_length)
+            padded_negative_ids = [([k for k in ids] + ([-1] * (max_negative_ids - len(ids)))) for ids in negative_ids]
+            # add extra rows full of padding if we're under the max tree count
+            while len(padded_negative_ids) < max_negative_trees:
+                padded_negative_ids.append([-1] * max_negative_ids)
             negative_lists[i].append(padded_negative_ids)
-            total_subtrees += 1
-            if len(negative_ids) > max_negatives:
-                max_negatives = len(tree_set["negatives"])
-            if max(len(x) for x in negative_ids) > max_negative_ids:
-                max_negative_ids = max(len(x) for x in negative_ids)
-            if len(positive_ids) > max_positive_ids:
-                max_positive_ids = len(positive_ids)
+
+    # maximum number of subtrees for a given batch item
     max_subtrees = max(len(x) for x in positives.values())
 
+    # initialize the packed tensors with -1 in the appropriate shapes
     root_indexes = torch.full((batch_size, max_subtrees), -1, dtype=torch.long, device=device)
     positive_indexes = torch.full((batch_size, max_subtrees, max_positive_ids), -1, dtype=torch.long, device=device)
     negative_indexes = torch.full(
-        (batch_size, max_subtrees, max_negatives, max_negative_ids), -1, dtype=torch.long, device=device
+        (batch_size, max_subtrees, max_negative_trees, max_negative_ids), -1, dtype=torch.long, device=device
     )
-    i = 0
+
+    # fill the packed tensors
     for i in range(len(root_ids)):
         n = len(root_ids[i])
         if n == 0:
@@ -145,23 +94,52 @@ def assess_tree_sgcl_batched(
         a, b, c = negatives_for_set.shape
         negative_indexes[i, :a, :b, :c] = negatives_for_set
 
+    # generate masks
     negative_mask = negative_indexes.ne(torch.tensor(-1, dtype=torch.long, device=device))
     positive_mask = positive_indexes.ne(torch.tensor(-1, dtype=torch.long, device=device))
     root_mask = root_indexes.ne(torch.tensor(-1, dtype=torch.long, device=device))
 
+    # clamp -1 to 0
     root_indexes = root_indexes.clamp(min=0)
     positive_indexes = positive_indexes.clamp(min=0)
     negative_indexes = negative_indexes.clamp(min=0)
 
-    # Find root vectors
-    num_layers = tokenwise_hidden_states.shape[0]
-    num_hidden = tokenwise_hidden_states.shape[-1]
+    return {
+        "root_indexes": root_indexes,
+        "root_mask": root_mask,
+        "positive_indexes": positive_indexes,
+        "positive_mask": positive_mask,
+        "negative_indexes": negative_indexes,
+        "negative_mask": negative_mask,
+    }
+
+
+def assess_tree_sgcl_batched(
+    config: TreeSgclConfig,
+    tree_sets_for_batch: List[List[Dict[str, Any]]],
+    hidden_states: List[torch.Tensor],
+    token_spans: torch.LongTensor,
+    temperature: float = 0.1,
+) -> float:
+    device = hidden_states[0].device
+    tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
+    num_layers, batch_size, sequence_length, num_hidden = tokenwise_hidden_states.shape
+
+    packed = _pack_trees_into_index_tensors(config, tree_sets_for_batch, batch_size, device)
+    root_indexes = packed["root_indexes"]
+    negative_indexes = packed["negative_indexes"]
+    positive_indexes = packed["positive_indexes"]
+    root_mask = packed["root_mask"]
+    negative_mask = packed["negative_mask"]
+    positive_mask = packed["positive_mask"]
+
+    # Select root vectors
     root_indexes = root_indexes.unsqueeze(0).unsqueeze(-1).repeat(num_layers, 1, 1, num_hidden)
     root_zs = tokenwise_hidden_states.take_along_dim(root_indexes, dim=2) * root_mask.unsqueeze(0).repeat(
         3, 1, 1
     ).unsqueeze(-1)
 
-    # Find positive vectors
+    # Select positive vectors
     flattened_positive_number = positive_indexes.shape[1] * positive_indexes.shape[2]
     positive_target_shape = (num_layers, batch_size, flattened_positive_number, num_hidden)
     flattened_positive_indexes = (
@@ -169,7 +147,7 @@ def assess_tree_sgcl_batched(
     )
     positive_zs = tokenwise_hidden_states.take_along_dim(flattened_positive_indexes, dim=2)
 
-    # Find negative vectors
+    # Select negative vectors
     flattened_negative_number = negative_indexes.shape[1] * negative_indexes.shape[2] * negative_indexes.shape[3]
     negative_target_shape = (num_layers, batch_size, flattened_negative_number, num_hidden)
     flattened_negative_indexes = (
@@ -180,37 +158,39 @@ def assess_tree_sgcl_batched(
     )
     negative_zs = tokenwise_hidden_states.take_along_dim(flattened_negative_indexes, dim=2)
 
-    # Now we need to compute dot products
-    # shape: [num_layers, batch_size, max_pairs_for_batch_item, max_ids_for_positive_subtree, hidden_dim]
+    # Now we need to compute dot products. Unflatten positive and negative zs to put them back
+    # into their original shape.
+    # shape: [num_layers, batch_size, max_subtrees, max_positive_ids, hidden_dim]
     reshaped_positive_zs = positive_zs.view(num_layers, *positive_indexes.shape, num_hidden)
-    # shape: [num_layers, batch_size, max_pairs_for_batch_item, max_num_negative_max_ids_for_positive_subtree, hidden_dim]
+    # shape: [num_layers, batch_size, max_subtrees, max_negative_subtrees, max_negative_ids, hidden_dim]
     reshaped_negative_zs = negative_zs.view(num_layers, *negative_indexes.shape, num_hidden)
 
-    positive_dots = torch.einsum("abch,abcdh->abcd", root_zs, reshaped_positive_zs)
-    positive_dots = positive_dots * positive_mask.unsqueeze(0)
-    negative_dots = torch.einsum("abch,abcdeh->abcde", root_zs, reshaped_negative_zs)
-    negative_dots = negative_dots * negative_mask.unsqueeze(0)
-
-    positive_eij = F.softmax(positive_dots, dim=-1) * positive_mask.unsqueeze(0)
+    # Dot the root with all subtree children for both tree types and apply mask
+    positive_dots = torch.einsum("abch,abcdh->abcd", root_zs, reshaped_positive_zs) * positive_mask.unsqueeze(0)
+    # Softmax the dots
+    positive_eij = masked_softmax(positive_dots, positive_mask, -1).nan_to_num()
+    # Take the Hadamard product of the positive zs and the softmaxed dots and sum the resulting zs together
     positive_sim_rhs = (reshaped_positive_zs * positive_eij.unsqueeze(-1)).sum(-2)
-
-    negative_eij = F.softmax(negative_dots, dim=-1) * negative_mask.unsqueeze(0)
-    negative_sim_rhs = (reshaped_negative_zs * negative_eij.unsqueeze(-1)).sum(-2)
-
+    # Take cosine similarity between the root representation and the softmaxed and summed representation
     positive_cosines = F.cosine_similarity(root_zs, positive_sim_rhs, dim=-1)
+
+    # Do the same for negatives
+    negative_dots = torch.einsum("abch,abcdeh->abcde", root_zs, reshaped_negative_zs) * negative_mask.unsqueeze(0)
+    negative_eij = masked_softmax(negative_dots, negative_mask, -1).nan_to_num()
+    negative_sim_rhs = (reshaped_negative_zs * negative_eij.unsqueeze(-1)).sum(-2)
+    # TODO: respect config.max_negatives_used_in_loss
     negative_cosines = F.cosine_similarity(root_zs.unsqueeze(-2), negative_sim_rhs, dim=-1)
 
+    # Pack the positive with the negative cosines to prepare for softmaxing
     combined = torch.concat((positive_cosines.unsqueeze(-1), negative_cosines), dim=-1)
+    reduced_negative_mask = negative_mask.any(dim=-1)
+    reduced_positive_mask = positive_mask.any(dim=-1)
+    combined_mask = torch.concat((reduced_positive_mask.unsqueeze(-1), reduced_negative_mask), dim=-1)
 
-    losses = -F.log_softmax(combined / temperature, dim=-1)[:, :, :, 0]
-    softmax_mask = root_mask.unsqueeze(0).repeat(3, 1, 1)
-    losses = softmax_mask * losses
-    loss = losses.sum(-1).mean(dim=0).mean(dim=0)
+    losses = -masked_log_softmax(combined / temperature, combined_mask, dim=-1)[:, :, :, 0]
+    losses = losses.nan_to_num()
 
-    print()
-    print(losses[0, 0:4])
-    print(loss)
-
+    loss = (losses.sum(-1) / losses.ne(0).sum(-1)).nan_to_num().mean(dim=0).mean(dim=0)
     return loss
 
 
@@ -255,16 +235,17 @@ def syntax_tree_guided_loss(
     # print(head.shape)
     # print(head[0])
     # print(config)
-    # lc.dill_dump(config, "/tmp/config")
-    # lc.dill_dump(hidden_states, "/tmp/hidden_states")
-    # lc.dill_dump(token_spans, "/tmp/token_spans")
-    # lc.dill_dump(head, "/tmp/head")
+    lc.dill_dump(config, "/tmp/config")
+    lc.dill_dump(hidden_states, "/tmp/hidden_states")
+    lc.dill_dump(token_spans, "/tmp/token_spans")
+    lc.dill_dump(head, "/tmp/head")
     tree_sets_for_batch = generate_subtrees(config, head)
     return assess_tree_sgcl_batched(config, tree_sets_for_batch, hidden_states, token_spans)
 
 
 def scratch():
     config = lc.dill_load("/tmp/config")
+    config.include_root_in_sims = False
     hidden_states = lc.dill_load("/tmp/hidden_states")
     token_spans = lc.dill_load("/tmp/token_spans")
     head = lc.dill_load("/tmp/head")

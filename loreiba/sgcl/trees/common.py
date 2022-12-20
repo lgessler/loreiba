@@ -47,6 +47,7 @@ class TreeSgclConfig(FromParams):
         max_retry: int = 20,
         max_negatives_used_in_loss: int = 3,
         subtree_sampling_method: SubtreeSamplingMethod = AllSubtreeSamplingMethod(),
+        include_root_in_sims: bool = False,
     ):
         """
         Args:
@@ -74,6 +75,9 @@ class TreeSgclConfig(FromParams):
                 Trees will be ranked according to tree_sim first.
             subtree_sampling_method:
                 See `SubtreeSamplingMethod`.
+            include_root_in_sims:
+                If false, when computing tree similarities, do not calculate the similarity between the root and
+                itself.
         """
         self.max_negative_per_subtree = max_negative_per_subtree
         self.min_subtree_size = min_subtree_size
@@ -83,3 +87,4 @@ class TreeSgclConfig(FromParams):
         self.max_retry = max_retry
         self.max_negatives_used_in_loss = max_negatives_used_in_loss
         self.subtree_sampling_method = subtree_sampling_method
+        self.include_root_in_sims = include_root_in_sims
