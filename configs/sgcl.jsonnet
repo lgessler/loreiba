@@ -76,7 +76,7 @@ local BERT_total_instances = BERT_steps * BERT_batch_size;
 // our settings
 local batch_size = 64;
 local instances_per_epoch = 256000;
-local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 64;  // 16 is an extra reduction we're making
+local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
 
 local validate_every = 20000;
 
@@ -108,11 +108,17 @@ local train_dataloader = {
     shuffle: true,
     batch_size: batch_size,
     collate_fn: collate_fn,
+    pin_memory: true,
+    num_workers: 4,
+    prefetch_factor: 32,
 };
 local val_dataloader = {
     shuffle: false,
     batch_size: batch_size,
-    collate_fn: collate_fn
+    collate_fn: collate_fn,
+    pin_memory: true,
+    num_workers: 4,
+    prefetch_factor: 32,
 };
 
 {
