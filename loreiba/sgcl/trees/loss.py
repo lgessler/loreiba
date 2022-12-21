@@ -119,7 +119,6 @@ def assess_tree_sgcl_batched(
     tree_sets_for_batch: List[List[Dict[str, Any]]],
     hidden_states: List[torch.Tensor],
     token_spans: torch.LongTensor,
-    temperature: float = 0.1,
 ) -> float:
     if len(tree_sets_for_batch) == 0:
         return 0.0
@@ -190,7 +189,7 @@ def assess_tree_sgcl_batched(
     reduced_positive_mask = positive_mask.any(dim=-1)
     combined_mask = torch.concat((reduced_positive_mask.unsqueeze(-1), reduced_negative_mask), dim=-1)
 
-    losses = -masked_log_softmax(combined / temperature, combined_mask, dim=-1)[:, :, :, 0]
+    losses = -masked_log_softmax(combined / config.temperature, combined_mask, dim=-1)[:, :, :, 0]
     losses = losses.nan_to_num()
 
     loss = (losses.sum(-1) / losses.ne(0).sum(-1)).nan_to_num().mean(dim=0).mean(dim=0)
