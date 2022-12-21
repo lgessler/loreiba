@@ -121,6 +121,9 @@ def assess_tree_sgcl_batched(
     token_spans: torch.LongTensor,
     temperature: float = 0.1,
 ) -> float:
+    if len(tree_sets_for_batch) == 0:
+        return 0.0
+
     device = hidden_states[0].device
     tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
     num_layers, batch_size, sequence_length, num_hidden = tokenwise_hidden_states.shape
