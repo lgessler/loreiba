@@ -264,6 +264,9 @@ def compute_phrase_loss_batched(
     positive_mask = packed["positive_mask"]
     included = packed["included"]
 
+    if len(included) == 0:
+        return 0.0
+
     # We do not want to consider items that did not have any samples. Filter them out here.
     averaged_attentions = averaged_attentions[:, included]
     attention_mask = attention_mask[included, :]
@@ -287,23 +290,6 @@ def compute_phrase_loss_batched(
     combined_distrs = torch.cat((positive_distrs.unsqueeze(-2), negative_distrs), dim=-2)
     combined_mask = torch.cat((positive_mask.unsqueeze(-1), negative_mask), dim=-1)
     expanded_attention_mask = attention_mask.unsqueeze(0).unsqueeze(-2).unsqueeze(-2)
-
-    # loss = 0.0
-    # count = 0
-    # for i in range(num_layers):
-    #     for j in range(batch_size):
-    #         for k in range(query_mask[0].sum().item()):
-    #             query = query_distrs[i,j,k]
-    #             positive = positive_distrs[i,j,k]
-    #             negatives = [negative_distrs[i,j,k,m] for m in range(negative_mask[j,k].sum())]
-    #             if len(negatives) == 0:
-    #                 continue
-    #             sims = jsd(query, torch.cat((positive.unsqueeze(0), torch.stack(negatives, dim=0)), dim=0))
-    #             softmaxed = -F.log_softmax(sims / config.temperature, dim=-1)
-    #             positive = softmaxed[0].mean().item()
-    #             loss += positive
-    #             count += 1
-    # loss = loss / count if count > 0 else 0.0
 
     # get jsd sims
     # need to mask both the attentions AND the trees
