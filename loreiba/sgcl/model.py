@@ -87,7 +87,7 @@ class SGCLModel(Model):
             if self.tree_sgcl_config is not None:
                 loss += syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
             if self.phrase_sgcl_config is not None:
-                loss += phrase_guided_loss(self.phrase_sgcl_config, attentions, token_spans, head)
+                loss += phrase_guided_loss(self.phrase_sgcl_config, attentions, attention_mask, token_spans, head)
             return {"loss": loss}
         else:
             return {}
