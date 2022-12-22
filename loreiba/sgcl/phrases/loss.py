@@ -1,4 +1,5 @@
 import logging
+import math
 import random
 from collections import defaultdict
 from typing import Any, Dict, List
@@ -35,9 +36,9 @@ def masked_jsd(a: torch.Tensor, b: torch.Tensor, attention_mask: torch.Tensor):
 
 
 def tmp_():
-    a = torch.tensor([[[0.2, 0.2, 0.6], [0.0, 0.0, 0.0]]])
-    b = torch.tensor([[[0.3, 0.3, 0.4], [0.0, 0.0, 0.0]]])
-    mask = torch.tensor([[[1, 1, 1], [0, 0, 0]]]).bool()
+    a = torch.tensor([[[0.2, 0.2, 0.6], [1.0, 0.0, 0.0]]])
+    b = torch.tensor([[[0.3, 0.3, 0.4], [0.9, 0.1, 0.0]]])
+    mask = torch.tensor([[[1, 1, 1], [1, 1, 0]]]).bool()
 
     masked_kl_div(a, b, mask)
     F.kl_div(a[0, 0].log(), b[0, 0], reduction="mean", log_target=False)
@@ -282,9 +283,9 @@ def compute_phrase_loss_batched(
     negative_distrs = flattened_negative_distrs.reshape((num_layers, batch_size, *negative_indexes.shape[1:], -1))
 
     # prepare for jsd
+    expanded_query_distrs = query_distrs.unsqueeze(-2)
     combined_distrs = torch.cat((positive_distrs.unsqueeze(-2), negative_distrs), dim=-2)
     combined_mask = torch.cat((positive_mask.unsqueeze(-1), negative_mask), dim=-1)
-    expanded_query_distrs = query_distrs.unsqueeze(-2)
     expanded_attention_mask = attention_mask.unsqueeze(0).unsqueeze(-2).unsqueeze(-2)
 
     # loss = 0.0
@@ -309,19 +310,19 @@ def compute_phrase_loss_batched(
     # mask the trees which are empty
     masked_combined_distrs = combined_distrs.masked_fill(~combined_mask.bool().unsqueeze(0).unsqueeze(-1), 1.0)
     # attention masking happens inside masked_jsd
-    sims = masked_jsd(expanded_query_distrs, masked_combined_distrs, expanded_attention_mask)
+    sims = masked_jsd(
+        expanded_query_distrs.clamp(min=1e-6), masked_combined_distrs.clamp(min=1e-6), expanded_attention_mask
+    )
 
     # compute InfoNCE
     combined_distrs_mask = torch.cat((positive_mask.unsqueeze(-1), negative_mask), dim=-1).unsqueeze(0)
-    sims = sims.masked_fill(~combined_distrs_mask, float("-inf"))
-    softmaxed_sims = -masked_log_softmax(sims / config.temperature, combined_distrs_mask, dim=-1)
-    positive_sims = softmaxed_sims[:, :, :, 0].nan_to_num()
+    filled_sims = sims.masked_fill(~combined_distrs_mask, float("-inf"))
+    softmaxed_sims = -masked_log_softmax(filled_sims / config.temperature, combined_distrs_mask, dim=-1)
+    positive_sims = softmaxed_sims[:, :, :, 0]
 
     # take the mean of InfoNCE across all samples
-    summed_per_batch = (positive_sims * positive_mask.unsqueeze(0)).sum(-1)
-    loss_per_batch_per_layer = (summed_per_batch / positive_mask.unsqueeze(0).sum(-1)).nan_to_num()
-    loss_per_layer = loss_per_batch_per_layer.mean(dim=-1)
-    loss = loss_per_layer.mean(dim=0)
+    losses = positive_sims.masked_select(positive_mask.unsqueeze(0))
+    loss = losses.mean()
     return loss
 
 
