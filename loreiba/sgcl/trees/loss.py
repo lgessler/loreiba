@@ -120,7 +120,7 @@ def assess_tree_sgcl_batched(
     hidden_states: List[torch.Tensor],
     token_spans: torch.LongTensor,
 ) -> float:
-    if len(tree_sets_for_batch) == 0:
+    if len(tree_sets_for_batch) == 0 or all(len(s) == 0 for s in tree_sets_for_batch):
         return 0.0
 
     device = hidden_states[0].device
