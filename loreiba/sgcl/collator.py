@@ -4,6 +4,7 @@ import torch
 from tango.common import Lazy
 from tango.integrations.torch import DataCollator
 from tango.integrations.transformers import Tokenizer
+from torch.nn.utils.rnn import pad_sequence
 from transformers import DataCollatorForLanguageModeling
 
 import loreiba.sgcl.trees as lst
@@ -18,45 +19,34 @@ class SgclDataCollator(DataCollator):
         self.text_field = text_field
         self.span_field = span_field
         self.mlm_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=0.15)
+        self.keys = None
 
     def __call__(self, batch) -> Dict[str, Any]:
-        padded = {}
-        for key in batch[0].keys():
-            max_length = max(len(item[key]) for item in batch)
-            pad = [self.text_pad_id] if key == self.text_field else [[-1, -1]] if key == self.span_field else [0]
-            if key == self.span_field:
-                seq_values = [
-                    torch.vstack(
-                        (
-                            item[key],
-                            torch.tensor(pad * (max_length - len(item[key])), dtype=torch.long).to(item[key].device),
-                        ),
-                    )
-                    if (max_length - len(item[key])) > 0
-                    else item[key]
-                    for item in batch
-                ]
-                value = torch.stack(seq_values, dim=0).to(batch[0][key].device)
+        if self.keys is None:
+            self.keys = list(batch[0].keys())
+
+        output = {}
+        for k in self.keys:
+            if k == self.span_field:
+                max_len = max(item[k].shape[0] for item in batch)
+                base = torch.full((len(batch), max_len, 2), -1, dtype=torch.long, device=batch[0][k].device)
+                for i, item in enumerate(batch):
+                    base[i, : item[k].shape[0]] = item[k]
+                output[k] = base
             else:
-                seq_values = [
-                    torch.hstack(
-                        (
-                            item[key],
-                            torch.tensor(pad * (max_length - len(item[key])), dtype=torch.long).to(item[key].device),
-                        )
-                    )
-                    for item in batch
-                ]
-                value = torch.vstack(seq_values).to(batch[0][key].device)
-            if key == self.text_field:
-                input_ids, labels = self.mlm_collator.torch_mask_tokens(value)
+                output[k] = pad_sequence(
+                    (item[k] for item in batch),
+                    batch_first=True,
+                    padding_value=(0 if k != self.text_field else self.text_pad_id),
+                )
+
+            if k == self.text_field:
+                input_ids, labels = self.mlm_collator.torch_mask_tokens(output[k])
                 num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
                 while num_masked == 0:
-                    input_ids, labels = self.mlm_collator.torch_mask_tokens(value)
+                    input_ids, labels = self.mlm_collator.torch_mask_tokens(output[k])
                     num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
-                padded[key] = input_ids
-                padded["labels"] = labels
-            else:
-                padded[key] = value
+                output[k] = input_ids
+                output["labels"] = labels
 
-        return padded
+        return output
