@@ -83,7 +83,7 @@ class ReadTextOnlyConllu(Step):
 
         def read_conllu(path):
             with open(path, "r") as f:
-                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())][:256]
+                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())]
                 if stanza_retokenize:
                     sentences = retokenize(sentences, path)
                 return sentences
