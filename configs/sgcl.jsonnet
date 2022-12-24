@@ -89,9 +89,9 @@ local training_engine = {
     optimizer: {
         type: "torch::AdamW",
         lr: 3e-3,
-        betas: [0.9, 0.99],
-        eps: 1e-5,
-        weight_decay: 0.05
+        betas: [0.9, 0.98],
+        eps: 1e-6,
+        weight_decay: 0.01
     },
     lr_scheduler: {
         type: "transformers::cosine",
@@ -111,16 +111,16 @@ local train_dataloader = {
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 4,
-    prefetch_factor: 32,
+    num_workers: 6,
+    prefetch_factor: 2,
 };
 local val_dataloader = {
     shuffle: false,
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 4,
-    prefetch_factor: 32,
+    num_workers: 6,
+    prefetch_factor: 2,
 };
 
 {
