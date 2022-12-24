@@ -35,18 +35,11 @@ class SgclDataCollator(DataCollator):
 
         output = {}
         for k in self.keys:
-            if k == self.span_field:
-                max_len = max(item[k].shape[0] for item in batch)
-                base = torch.full((len(batch), max_len, 2), -1, dtype=torch.long, device=batch[0][k].device)
-                for i, item in enumerate(batch):
-                    base[i, : item[k].shape[0]] = item[k]
-                output[k] = base
-            else:
-                output[k] = pad_sequence(
-                    (item[k] for item in batch),
-                    batch_first=True,
-                    padding_value=(0 if k != self.text_field else self.text_pad_id),
-                )
+            output[k] = pad_sequence(
+                (item[k] for item in batch),
+                batch_first=True,
+                padding_value=(0 if k != self.text_field else self.text_pad_id),
+            )
 
             if not self.static_masking and k == self.text_field:
                 input_ids, labels = self.mlm_collator.torch_mask_tokens(output[k])

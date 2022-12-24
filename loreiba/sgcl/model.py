@@ -73,6 +73,7 @@ class SGCLModel(Model):
         return masked_lm_loss
 
     def forward(self, input_ids, token_type_ids, attention_mask, token_spans, head, deprel, labels=None):
+        token_spans = token_spans.reshape((token_spans.shape[0], -1, 2))
         outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
             input_ids=input_ids,
             token_type_ids=token_type_ids,

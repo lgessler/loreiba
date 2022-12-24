@@ -83,7 +83,7 @@ class ReadTextOnlyConllu(Step):
 
         def read_conllu(path):
             with open(path, "r") as f:
-                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())]
+                sentences = [[t["form"] for t in s] for s in conllu.parse(f.read())][:256]
                 if stanza_retokenize:
                     sentences = retokenize(sentences, path)
                 return sentences
@@ -191,7 +191,8 @@ class TokenizePlus(Step):
             del r["length"]
             # tokenizer might have truncated wordpieces--account for that here
             r[token_column] = sentence[: len(token_spans) - 2]
-            r["token_spans"] = token_spans
+            # flatten this for storage
+            r["token_spans"] = [v for token_span in token_spans for v in token_span]
             output.append(dict(r))
 
         features = datasets.Features(
@@ -200,9 +201,7 @@ class TokenizePlus(Step):
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_spans": Sequence(
-                    feature=Sequence(feature=Value(dtype="int32", id=None), length=2, id=None), length=-1, id=None
-                ),
+                "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
         return datasets.Dataset.from_list(output, features=features)
@@ -371,9 +370,7 @@ class StanzaParseDataset(Step):
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_spans": Sequence(
-                    feature=Sequence(feature=Value(dtype="int32", id=None), length=2, id=None), length=-1, id=None
-                ),
+                "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
 
@@ -432,9 +429,7 @@ class Finalize(Step):
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_spans": Sequence(
-                    feature=Sequence(feature=Value(dtype="int32", id=None), length=2, id=None), length=-1, id=None
-                ),
+                "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "head": Sequence(feature=Value(dtype="int16", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=ClassLabel(names=deprels, id=None), length=-1, id=None),
             }
@@ -447,7 +442,11 @@ class Finalize(Step):
         new_dataset = {}
         for split, rows in dataset.items():
             new_rows = []
-            for v in ncycles(rows, 10) if static_masking else rows:
+            for v in Tqdm.tqdm(
+                ncycles(rows, 10) if static_masking else rows,
+                desc=f"Constructing {split}..",
+                total=len(rows) * (10 if static_masking else 1),
+            ):
                 new_row = {
                     "input_ids": v["input_ids"],
                     "token_type_ids": v["token_type_ids"],
