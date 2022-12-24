@@ -29,6 +29,7 @@ class SgclDataCollator(DataCollator):
         self.keys = None
 
     def __call__(self, batch) -> Dict[str, Any]:
+        torch.cuda.empty_cache()
         if self.keys is None:
             self.keys = list(batch[0].keys())
 
