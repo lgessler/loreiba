@@ -1,6 +1,7 @@
 import os
 import random
 import shutil
+from itertools import chain, repeat
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -9,14 +10,21 @@ import datasets
 import more_itertools as mit
 import requests
 import stanza
+import torch
 from datasets import ClassLabel, Dataset, DatasetDict, Sequence, Value
 from github import Github
 from tango import Step
 from tango.common import Lazy, Tqdm
 from tango.integrations.datasets import DatasetsFormat
 from tango.integrations.transformers import Tokenizer
+from transformers import DataCollatorForLanguageModeling
 
 from loreiba.tokenizers import simple_train_tokenizer
+
+
+def ncycles(iterable, n):
+    "Returns the sequence elements n times"
+    return chain.from_iterable(repeat(tuple(iterable), n))
 
 
 @Step.register("loreiba.data::read_text_only_conllu")
@@ -405,7 +413,10 @@ class Finalize(Step):
     def run(
         self,
         dataset: DatasetDict,
+        tokenizer: Lazy[Tokenizer],
+        static_masking: bool = True,
     ) -> DatasetDict:
+        tokenizer = tokenizer.construct()
         dataset = dataset.remove_columns(["tokens", "lemmas", "xpos", "upos"])
         # It's OK to peek at test since UD deprels are a fixed set--this is just for convenience, not cheating
         deprels = sorted(
@@ -429,22 +440,28 @@ class Finalize(Step):
             }
         )
 
+        mlm_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=0.15)
+        if static_masking:
+            features["labels"] = Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None)
+
         new_dataset = {}
         for split, rows in dataset.items():
-            new_dataset[split] = Dataset.from_list(
-                [
-                    {
-                        "input_ids": v["input_ids"],
-                        "token_type_ids": v["token_type_ids"],
-                        "attention_mask": v["attention_mask"],
-                        "token_spans": v["token_spans"],
-                        "head": [int(i) for i in v["head"]],
-                        "deprel": v["deprel"],
-                    }
-                    for v in rows
-                ],
-                features=features,
-            )
+            new_rows = []
+            for v in ncycles(rows, 10) if static_masking else rows:
+                new_row = {
+                    "input_ids": v["input_ids"],
+                    "token_type_ids": v["token_type_ids"],
+                    "attention_mask": v["attention_mask"],
+                    "token_spans": v["token_spans"],
+                    "head": [int(i) for i in v["head"]],
+                    "deprel": v["deprel"],
+                }
+                if static_masking:
+                    _, labels = mlm_collator.torch_mask_tokens(torch.tensor([new_row["input_ids"]]))
+                    new_row["labels"] = labels[0]
+                new_rows.append(new_row)
+
+            new_dataset[split] = Dataset.from_list(new_rows, features=features)
 
         return datasets.DatasetDict(new_dataset).with_format("torch")
 

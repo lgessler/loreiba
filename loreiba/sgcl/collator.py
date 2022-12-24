@@ -12,10 +12,17 @@ import loreiba.sgcl.trees as lst
 
 @DataCollator.register("loreiba.sgcl.collator::collator")
 class SgclDataCollator(DataCollator):
-    def __init__(self, tokenizer: Lazy[Tokenizer], text_field: str = "input_ids", span_field: str = "token_spans"):
+    def __init__(
+        self,
+        tokenizer: Lazy[Tokenizer],
+        static_masking: bool = True,
+        text_field: str = "input_ids",
+        span_field: str = "token_spans",
+    ):
         tokenizer = tokenizer.construct()
         self.tokenizer = tokenizer
         self.text_pad_id = tokenizer.pad_token_id
+        self.static_masking = static_masking
         self.text_field = text_field
         self.span_field = span_field
         self.mlm_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=0.15)
@@ -40,13 +47,8 @@ class SgclDataCollator(DataCollator):
                     padding_value=(0 if k != self.text_field else self.text_pad_id),
                 )
 
-            if k == self.text_field:
+            if not self.static_masking and k == self.text_field:
                 input_ids, labels = self.mlm_collator.torch_mask_tokens(output[k])
-                num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
-                while num_masked == 0:
-                    input_ids, labels = self.mlm_collator.torch_mask_tokens(output[k])
-                    num_masked = (input_ids.view(-1) == self.tokenizer.mask_token_id).sum().item()
-                output[k] = input_ids
                 output["labels"] = labels
 
         return output

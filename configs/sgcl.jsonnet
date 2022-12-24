@@ -23,6 +23,7 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // Model settings
 // --------------------------------------------------------------------------------
 local max_length = 512;
+local static_masking = true;
 
 
 // For pretrained
@@ -103,6 +104,7 @@ local training_engine = {
 local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
     tokenizer: tokenizer,
+    static_masking: static_masking,
 };
 local train_dataloader = {
     shuffle: true,
@@ -153,11 +155,13 @@ local val_dataloader = {
             language_code: language_code_index[language],
             allow_retokenization: false,  // we tokenized earlier
             stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
-            batch_size: 64,
+            batch_size: 256,
         },
         model_inputs: {
             type: "loreiba.data::finalize",
             dataset: { "type": "ref", "ref": "parsed_text_data" },
+            static_masking: static_masking,
+            tokenizer: tokenizer,
         },
         trained_model: {
             type: "torch::train",
@@ -172,7 +176,7 @@ local val_dataloader = {
             checkpoint_every: validate_every,
             validation_split: "dev",
             validation_dataloader: val_dataloader,
-            val_metric_name: "loss",
+            val_metric_name: "perplexity",
             minimize_val_metric: true,
             callbacks: [
                 {"type": "loreiba.model::write_model", path: model_path, model_attr: "encoder"}

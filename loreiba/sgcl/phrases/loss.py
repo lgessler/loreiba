@@ -333,6 +333,7 @@ def phrase_guided_loss(
     # dill_dump(head, "/tmp/head")
 
     attentions = torch.stack(attentions, dim=0)
+    # average across heads
     averaged_attentions = attentions.mean(dim=2)
     loss = compute_phrase_loss_batched(config, averaged_attentions, attention_mask, phrase_sets_for_batch)
     return loss
