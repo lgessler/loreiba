@@ -111,7 +111,7 @@ local train_dataloader = {
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 6,
+    num_workers: 4,
     prefetch_factor: 2,
 };
 local val_dataloader = {
@@ -119,7 +119,7 @@ local val_dataloader = {
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 6,
+    num_workers: 4,
     prefetch_factor: 2,
 };
 
