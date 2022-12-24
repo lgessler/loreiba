@@ -66,6 +66,8 @@ class SGCLModel(Model):
         self.phrase_sgcl_config = phrase_sgcl_config
 
     def _mlm_loss(self, preds, labels):
+        if labels.shape[0] == 0:
+            return 0.0
         loss_fct = CrossEntropyLoss(ignore_index=-100)
         masked_lm_loss = loss_fct(preds.view(-1, self.encoder.config.vocab_size), labels.view(-1))
         return masked_lm_loss
