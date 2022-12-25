@@ -444,8 +444,9 @@ class Finalize(Step):
             # needed to do this to avoid loading the 10x dataset into memory
             dummy = rows[0].copy()
             del dummy["feats"]
-            _, labels = mlm_collator.torch_mask_tokens(torch.tensor([dummy["input_ids"]]))
-            dummy["labels"] = labels[0].tolist()
+            if static_masking:
+                _, labels = mlm_collator.torch_mask_tokens(torch.tensor([dummy["input_ids"]]))
+                dummy["labels"] = labels[0].tolist()
             masked = Dataset.from_list([dummy], features=features)
 
             def get_rows():
