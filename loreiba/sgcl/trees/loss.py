@@ -104,6 +104,12 @@ def _pack_trees_into_index_tensors(
     positive_indexes = positive_indexes.clamp(min=0)
     negative_indexes = negative_indexes.clamp(min=0)
 
+    del all_negative_ids
+    del all_positive_ids
+    del max_negative_ids
+    del max_positive_ids
+    del max_negative_trees
+
     return {
         "root_indexes": root_indexes,
         "root_mask": root_mask,
@@ -134,6 +140,7 @@ def assess_tree_sgcl_batched(
     root_mask = packed["root_mask"]
     negative_mask = packed["negative_mask"]
     positive_mask = packed["positive_mask"]
+    del packed
 
     # Select root vectors
     root_indexes = root_indexes.unsqueeze(0).unsqueeze(-1).repeat(num_layers, 1, 1, num_hidden)
@@ -241,7 +248,14 @@ def syntax_tree_guided_loss(
     # lc.dill_dump(token_spans, "/tmp/token_spans")
     # lc.dill_dump(head, "/tmp/head")
     tree_sets_for_batch = generate_subtrees(config, head)
-    return assess_tree_sgcl_batched(config, tree_sets_for_batch, hidden_states, token_spans)
+    loss = assess_tree_sgcl_batched(config, tree_sets_for_batch, hidden_states, token_spans)
+    # TODO: why on earth does a memory leak happen otherwise???
+    for i in range(len(tree_sets_for_batch) - 1, -1, -1):
+        for j in range(len(tree_sets_for_batch[i]) - 1, -1, -1):
+            del tree_sets_for_batch[i][j]
+        del tree_sets_for_batch[i]
+    del tree_sets_for_batch
+    return loss
 
 
 def scratch():
