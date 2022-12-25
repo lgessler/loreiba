@@ -200,6 +200,9 @@ def compute_phrase_loss_batched(
     attention_mask: torch.Tensor,
     phrase_sets_for_batch: List[List[Dict[str, Any]]],
 ) -> float:
+    if all(len(s) == 0 for s in phrase_sets_for_batch):
+        return 0.0
+
     packed = _pack_phrases_into_tensors(config, phrase_sets_for_batch, averaged_attentions.device)
     query_indexes = packed["query_indexes"]
     negative_indexes = packed["negative_indexes"]
@@ -207,9 +210,6 @@ def compute_phrase_loss_batched(
     negative_mask = packed["negative_mask"]
     positive_mask = packed["positive_mask"]
     included = packed["included"]
-
-    if len(included) == 0:
-        return 0.0
 
     # We do not want to consider items that did not have any samples. Filter them out here.
     averaged_attentions = averaged_attentions[:, included]
