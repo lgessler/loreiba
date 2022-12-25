@@ -441,26 +441,35 @@ class Finalize(Step):
 
         new_dataset = {}
         for split, rows in dataset.items():
-            new_rows = []
-            for v in Tqdm.tqdm(
-                ncycles(rows, 10) if static_masking else rows,
-                desc=f"Constructing {split}..",
-                total=len(rows) * (10 if static_masking else 1),
-            ):
-                new_row = {
-                    "input_ids": v["input_ids"],
-                    "token_type_ids": v["token_type_ids"],
-                    "attention_mask": v["attention_mask"],
-                    "token_spans": v["token_spans"],
-                    "head": [int(i) for i in v["head"]],
-                    "deprel": v["deprel"],
-                }
-                if static_masking:
-                    _, labels = mlm_collator.torch_mask_tokens(torch.tensor([new_row["input_ids"]]))
-                    new_row["labels"] = labels[0]
-                new_rows.append(new_row)
+            # needed to do this to avoid loading the 10x dataset into memory
+            dummy = rows[0].copy()
+            del dummy["feats"]
+            _, labels = mlm_collator.torch_mask_tokens(torch.tensor([dummy["input_ids"]]))
+            dummy["labels"] = labels[0].tolist()
+            masked = Dataset.from_list([dummy], features=features)
 
-            new_dataset[split] = Dataset.from_list(new_rows, features=features)
+            def get_rows():
+                for v in Tqdm.tqdm(
+                    ncycles(rows, 10) if static_masking else rows,
+                    desc=f"Constructing {split}..",
+                    total=len(rows) * (10 if static_masking else 1),
+                ):
+                    new_row = {
+                        "input_ids": v["input_ids"],
+                        "token_type_ids": v["token_type_ids"],
+                        "attention_mask": v["attention_mask"],
+                        "token_spans": v["token_spans"],
+                        "head": [int(i) for i in v["head"]],
+                        "deprel": v["deprel"],
+                    }
+                    if static_masking:
+                        _, labels = mlm_collator.torch_mask_tokens(torch.tensor([new_row["input_ids"]]))
+                        new_row["labels"] = labels[0].tolist()
+                    yield new_row
+
+            for item in get_rows():
+                masked.add_item(item)
+            new_dataset[split] = masked
 
         return datasets.DatasetDict(new_dataset).with_format("torch")
 
