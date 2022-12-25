@@ -42,7 +42,9 @@ class SgclDataCollator(DataCollator):
             )
 
             if not self.static_masking and k == self.text_field:
-                input_ids, labels = self.mlm_collator.torch_mask_tokens(output[k])
+                _, labels = self.mlm_collator.torch_mask_tokens(output[k])
+                while (labels == -100).all():
+                    _, labels = self.mlm_collator.torch_mask_tokens(output[k])
                 output["labels"] = labels
 
         return output
