@@ -441,14 +441,6 @@ class Finalize(Step):
 
         new_dataset = {}
         for split, rows in dataset.items():
-            # needed to do this to avoid loading the 10x dataset into memory
-            dummy = rows[0].copy()
-            del dummy["feats"]
-            if static_masking:
-                _, labels = mlm_collator.torch_mask_tokens(torch.tensor([dummy["input_ids"]]))
-                dummy["labels"] = labels[0].tolist()
-            masked = Dataset.from_list([dummy], features=features)
-
             def get_rows():
                 for v in Tqdm.tqdm(
                     ncycles(rows, 10) if static_masking else rows,
@@ -467,10 +459,20 @@ class Finalize(Step):
                         _, labels = mlm_collator.torch_mask_tokens(torch.tensor([new_row["input_ids"]]))
                         new_row["labels"] = labels[0].tolist()
                     yield new_row
-
-            for item in get_rows():
-                masked.add_item(item)
-            new_dataset[split] = masked
+            if static_masking:
+                # needed to do this to avoid loading the 10x dataset into memory
+                dummy = rows[0].copy()
+                del dummy["feats"]
+                if static_masking:
+                    _, labels = mlm_collator.torch_mask_tokens(torch.tensor([dummy["input_ids"]]))
+                    dummy["labels"] = labels[0].tolist()
+                masked = Dataset.from_list([dummy], features=features)
+                for item in get_rows():
+                    masked = masked.add_item(item)
+                new_dataset[split] = masked
+            else:
+                new_dataset[split] = Dataset.from_list(list(get_rows()), features=features)
+            self.logger.info(f"Appended split with {len(new_dataset[split])} sequences")
 
         return datasets.DatasetDict(new_dataset).with_format("torch")
 
