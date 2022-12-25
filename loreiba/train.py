@@ -650,7 +650,7 @@ def _train(
             ) and config.is_distributed:
                 batch_loss_tensor = torch.tensor(batch_loss, device=device)
                 dist.all_reduce(batch_loss_tensor)
-                batch_loss = batch_loss_tensor.item() / config.world_size
+                batch_loss = batch_loss_tensor.detach().item() / config.world_size
 
             if config.should_log_this_step(step):
                 # Callbacks.
