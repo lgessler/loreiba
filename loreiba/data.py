@@ -441,6 +441,7 @@ class Finalize(Step):
 
         new_dataset = {}
         for split, rows in dataset.items():
+
             def get_rows():
                 for v in Tqdm.tqdm(
                     ncycles(rows, 10) if static_masking else rows,
@@ -459,6 +460,7 @@ class Finalize(Step):
                         _, labels = mlm_collator.torch_mask_tokens(torch.tensor([new_row["input_ids"]]))
                         new_row["labels"] = labels[0].tolist()
                     yield new_row
+
             if static_masking:
                 # needed to do this to avoid loading the 10x dataset into memory
                 dummy = rows[0].copy()
