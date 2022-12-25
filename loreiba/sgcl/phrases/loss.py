@@ -29,7 +29,7 @@ def masked_log_softmax(t: torch.FloatTensor, mask: torch.BoolTensor, dim: int):
 
 
 def masked_jsd(a: torch.Tensor, b: torch.Tensor, attention_mask: torch.Tensor):
-    m = (a + b) * 0.5
+    m = ((a + b) * 0.5).clamp(min=1e-6)
     term_1 = masked_kl_div(m, a, attention_mask)
     term_2 = masked_kl_div(m, b, attention_mask)
     return -(term_1 + term_2) * 0.5
