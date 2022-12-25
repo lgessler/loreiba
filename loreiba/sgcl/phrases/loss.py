@@ -88,62 +88,6 @@ def get_token_to_head_wordpiece_map(spans):
     return m
 
 
-def compute_phrase_loss(
-    config: PhraseSgclConfig,
-    batch_index: int,
-    head_map: Dict[int, int | None],
-    all_subtrees: Dict[int, Dict[int, int | None]],
-    averaged_attentions: torch.Tensor,
-    t2wp: Dict[int, int],
-) -> List[float]:
-    losses = []
-    wordpiece_length = max(t2wp.values()) + 1
-
-    shuffled_subtrees = list(all_subtrees.items())
-    random.shuffle(shuffled_subtrees)
-
-    for query, subtree in shuffled_subtrees:
-        if len(losses) > config.max_subtrees_per_sentence:
-            break
-        depth = depth_of_tree(query, subtree)
-        if depth > config.max_subtree_height:
-            continue
-        if len(subtree.keys()) < config.min_subtree_token_count:
-            continue
-        tokens_not_in_phrase = [token_id for token_id in head_map.keys() if token_id not in subtree and token_id > 0]
-        if len(tokens_not_in_phrase) == 0:
-            continue
-
-        positive = t2wp[random.sample(tuple(subtree.keys()), 1)[0]]
-        query = t2wp[random.sample(tuple(set(subtree.keys()) - {positive}), 1)[0]]
-        negatives = [
-            t2wp[i]
-            for i in random.sample(tokens_not_in_phrase, min(config.negative_per_positive, len(tokens_not_in_phrase)))
-        ]
-
-        query_reprs = averaged_attentions[:, batch_index, query, :wordpiece_length]
-        positive_reprs = averaged_attentions[:, batch_index, positive, :wordpiece_length]
-        negative_reprs = torch.stack(
-            [averaged_attentions[:, batch_index, negative, :wordpiece_length] for negative in negatives], dim=0
-        )
-
-        positive_sim = torch.stack([jsd(qr, pr) for qr, pr in zip(query_reprs, positive_reprs)])
-        negative_sims = []
-        for n in negative_reprs:
-            negative_sims.append(torch.stack([jsd(qr, nr) for qr, nr in zip(query_reprs, n)]))
-        negative_sims = torch.stack(negative_sims, dim=1)
-
-        combined_sims = torch.hstack((positive_sim.reshape(-1, 1), negative_sims)) / config.temperature
-        losses.append(compute_info_nce(combined_sims))
-
-    # one idea:
-    # - preprocess by generating token IDs
-    # - batch everything together in a [batch_count, max_num_subtrees, max_num_neg]
-    # - use these indices to get the right attentions and batch as much as possible
-
-    return sum(losses) / len(losses) if len(losses) > 0 else 0.0
-
-
 def compute_phrase_set(
     config: PhraseSgclConfig,
     head_map: Dict[int, int | None],
