@@ -2,24 +2,21 @@ import logging
 import math
 import os
 import shutil
+from _socket import gethostname
 from itertools import islice
 from typing import Any, Dict, List, Optional, Set, Union, cast
 
 import more_itertools
+import psutil
 import torch
 import torch.distributed as dist
 from more_itertools import chunked
-from torch.utils.data import DistributedSampler
-
 from tango.common.dataset_dict import DatasetDictBase
 from tango.common.exceptions import ConfigurationError
 from tango.common.lazy import Lazy
 from tango.common.tqdm import Tqdm
 from tango.common.util import get_extra_imported_modules, import_extra_module
 from tango.format import Format
-from tango.step import Step, StepResources
-from tango.workspace import Workspace
-
 from tango.integrations.torch.data import DataLoader
 from tango.integrations.torch.exceptions import StopEarly
 from tango.integrations.torch.format import TorchFormat
@@ -28,7 +25,9 @@ from tango.integrations.torch.train_callback import TrainCallback
 from tango.integrations.torch.train_config import TrainConfig
 from tango.integrations.torch.training_engine import TrainingEngine
 from tango.integrations.torch.util import check_dataloader, check_dataset, set_seed_all
-
+from tango.step import Step, StepResources
+from tango.workspace import Workspace
+from torch.utils.data import DistributedSampler
 
 
 @Step.register("loreiba.train::train")
@@ -581,6 +580,12 @@ def _train(
     train_batch_iterator = more_itertools.peekable(train_batch_iterator_tqdm)
     try:
         for step, (epoch, batch) in train_batch_iterator:
+            if gethostname() == "avi":
+                with open(os.path.join(config.work_dir, 'cuda'), 'a') as f:
+                    f.write(f"{torch.cuda.max_memory_allocated()},")
+                with open(os.path.join(config.work_dir, 'cpu'), 'a') as f:
+                    resident_memory = psutil.Process().memory_info().rss / 1024 ** 2
+                    f.write(f"{resident_memory},")
             if epoch != current_epoch:
                 # Start of new epoch.
                 if epoch > 0:

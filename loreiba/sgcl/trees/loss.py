@@ -249,12 +249,6 @@ def syntax_tree_guided_loss(
     # lc.dill_dump(head, "/tmp/head")
     tree_sets_for_batch = generate_subtrees(config, head)
     loss = assess_tree_sgcl_batched(config, tree_sets_for_batch, hidden_states, token_spans)
-    # TODO: why on earth does a memory leak happen otherwise???
-    for i in range(len(tree_sets_for_batch) - 1, -1, -1):
-        for j in range(len(tree_sets_for_batch[i]) - 1, -1, -1):
-            del tree_sets_for_batch[i][j]
-        del tree_sets_for_batch[i]
-    del tree_sets_for_batch
     return loss
 
 
