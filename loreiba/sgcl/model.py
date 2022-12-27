@@ -1,5 +1,6 @@
 import logging
 import os
+from _socket import gethostname
 from typing import Any, Dict, Optional
 
 import torch
@@ -88,8 +89,9 @@ class SGCLModel(Model):
         mlm_preds = self.lm_head(x)
 
         def log_metric(fname, value):
-            with open(f"/tmp/{fname}", 'a') as f:
-                f.write(f"{value},")
+            if gethostname() == 'avi':
+                with open(f"/tmp/{fname}", 'a') as f:
+                    f.write(f"{value},")
 
         if labels is not None:
             outputs = {}
