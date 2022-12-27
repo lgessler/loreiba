@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Any, Dict, Optional
 
 import torch
@@ -74,38 +75,48 @@ class SGCLModel(Model):
 
     def forward(self, input_ids, token_type_ids, attention_mask, token_spans, head, deprel, labels=None):
         token_spans = token_spans.reshape((token_spans.shape[0], -1, 2))
-        outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
+        encoder_outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
             input_ids=input_ids,
             token_type_ids=token_type_ids,
             attention_mask=attention_mask,
             output_hidden_states=True,
             output_attentions=True,
         )
-        hidden_states = outputs.hidden_states[1:]
-        attentions = outputs.attentions
-        x = outputs.last_hidden_state
+        hidden_states = encoder_outputs.hidden_states[1:]
+        attentions = encoder_outputs.attentions
+        x = encoder_outputs.last_hidden_state
         mlm_preds = self.lm_head(x)
+
+        def log_metric(fname, value):
+            with open(f"/tmp/{fname}", 'a') as f:
+                f.write(f"{value},")
+
         if labels is not None:
+            outputs = {}
             mlm_loss = self._mlm_loss(mlm_preds, labels)
-            perplexity = mlm_loss.exp()
             loss = mlm_loss
-            if self.tree_sgcl_config is not None and self.phrase_sgcl_config is not None:
-                tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
-                phrase_loss = phrase_guided_loss(self.phrase_sgcl_config, attentions, attention_mask, token_spans, head)
-                print(f" tree_loss: {tree_loss:0.4f}", end="")
-                print(f" phrase_loss: {phrase_loss:0.4f}", end="")
-                loss = loss + tree_loss + phrase_loss
-            elif self.tree_sgcl_config is not None:
+            outputs["mlm_loss"] = mlm_loss
+            if self.tree_sgcl_config is not None:
                 tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
                 loss += tree_loss
                 print(f" tree_loss: {tree_loss:0.4f}", end="")
-            elif self.phrase_sgcl_config is not None:
+                log_metric("tree", tree_loss)
+                outputs["tree_loss"] = tree_loss
+            if self.phrase_sgcl_config is not None:
                 phrase_loss = phrase_guided_loss(self.phrase_sgcl_config, attentions, attention_mask, token_spans, head)
                 loss += phrase_loss
                 print(f" phrase_loss: {phrase_loss:0.4f}", end="")
+                log_metric("phrase", phrase_loss)
+                outputs["phrase_loss"] = phrase_loss
+
+            perplexity = mlm_loss.exp()
             print(f" perplexity: {perplexity:0.4f}", end="")
+            log_metric("perplexity", perplexity)
+            outputs["perplexity"] = perplexity
+
             print(end="\r")
-            return {"loss": loss, "perplexity": perplexity}
+            outputs["loss"] = loss
+            return outputs
         else:
             return {}
 
