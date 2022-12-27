@@ -14,7 +14,7 @@ def get_head_map(head: torch.LongTensor) -> List[Dict[int, int | None]]:
     return head_map
 
 
-def immediate_children(head_map: Dict[int, int | None], token_id: int):
+def immediate_children(head_map: Dict[int, int | None], token_id: int) -> List[int]:
     return [child for child, parent in head_map.items() if parent == token_id]
 
 
