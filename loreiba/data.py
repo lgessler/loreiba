@@ -319,6 +319,32 @@ class ReadUDTreebank(Step):
         return DatasetDict({"train": train_dataset, "dev": dev_dataset, "test": test_dataset})
 
 
+def extend_tree_with_subword_edges(output, i):
+    added = 0
+    new_token_spans = []
+    token_spans = output["token_spans"][i]
+    head = output["head"][i]
+    deprel = output["deprel"][i]
+    for i in range(0, len(token_spans), 2):
+        b, e = token_spans[i : i + 2]
+        if e == b:
+            new_token_spans.append(b + added)
+            new_token_spans.append(e + added)
+        else:
+            diff = e - b
+            first_subword_index = b + added
+            new_token_spans.append(first_subword_index)
+            new_token_spans.append(first_subword_index)
+            for j in range(1, diff + 1):
+                new_token_spans.append(first_subword_index + j)
+                new_token_spans.append(first_subword_index + j)
+                head.insert(first_subword_index + j, str(first_subword_index + 1))
+                deprel.insert(first_subword_index + j, "subword")
+            added += diff
+    output["token_spans"].pop(i)
+    output["token_spans"].insert(i, new_token_spans)
+
+
 @Step.register("loreiba.data::stanza_parse_dataset")
 class StanzaParseDataset(Step):
     DETERMINISTIC = True  # actually we should assume parsers are non-deterministic, but we don't care
@@ -332,6 +358,7 @@ class StanzaParseDataset(Step):
         batch_size: int = 32,
         allow_retokenization: bool = True,
         stanza_use_mwt: bool = True,
+        add_subword_edges: bool = True,
     ) -> DatasetDict:
         config = {
             "processors": "tokenize,mwt,pos,lemma,depparse" if stanza_use_mwt else "tokenize,pos,lemma,depparse",
@@ -391,6 +418,8 @@ class StanzaParseDataset(Step):
                 output["token_type_ids"] = data[i]["token_type_ids"]
                 output["attention_mask"] = data[i]["attention_mask"]
                 output["token_spans"] = data[i]["token_spans"]
+                if add_subword_edges:
+                    extend_tree_with_subword_edges(output, i)
 
             dataset_dict[split] = datasets.Dataset.from_list(outputs, features=features)
             self.logger.info(f"Finished processing {split}")
