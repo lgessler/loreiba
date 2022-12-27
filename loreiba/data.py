@@ -184,9 +184,11 @@ class TokenizePlus(Step):
             # We can calculate which token index a wordpiece corresponds to by counting
             # the number of spaces to the left. Note that these are 0 indexes and special tokens
             # are indexed as corresponding to token index -1
-            token_indexes = [input_str[:b].count(" ") if b != e else -1 for b, e in r["offset_mapping"]]
+            token_indexes = [input_str[:b].count(" ") if (b, e) != (0, 0) else -1 for b, e in r["offset_mapping"]]
             # Now get spans
             token_spans = token_spans_from_wordpiece_token_indexes(token_indexes)
+            # Assume 2 special tokens
+            assert len(token_spans) == len(sentence) + 2
             del r["offset_mapping"]
             del r["length"]
             # tokenizer might have truncated wordpieces--account for that here
@@ -320,27 +322,59 @@ class ReadUDTreebank(Step):
 
 
 def extend_tree_with_subword_edges(output):
-    added = 0
-    new_token_spans = []
     token_spans = output["token_spans"]
     head = output["head"]
     deprel = output["deprel"]
-    for i in range(0, len(token_spans), 2):
-        b, e = token_spans[i : i + 2]
+    orig_head = head.copy()
+    orig_deprel = deprel.copy()
+
+    # Map from old token IDs to new token IDs after subword expansions
+    id_map = {}
+    running_diff = 0
+    for token_id in range(0, len(token_spans) // 2):
+        id_map[token_id] = token_id + running_diff
+        b, e = token_spans[token_id * 2 : (token_id + 1) * 2]
+        running_diff += e - b
+
+    # Note how many subwords have been added so far
+    new_token_spans = []
+    for token_id in range(0, len(token_spans) // 2):
+        # Inclusive indices of the subwords that the original token corresponds to
+        b, e = token_spans[token_id * 2 : (token_id + 1) * 2]
+
+        # If not a special token (we're assuming there are 2 on either end of the sequence),
+        # replace the head value of the current token with the mapped value
+        if token_id != 0 and token_id != ((len(token_spans) // 2) - 1):
+            head[id_map[token_id] - 1] = id_map[orig_head[token_id - 1]]
         if e == b:
+            # If we have a token that corresponds to a single subword, just append the same token_spans values
             new_token_spans.append(b)
             new_token_spans.append(e)
         else:
+            # Note how many expansion subwords we'll add
             diff = e - b
-            first_subword_index = (i // 2) + added
+            # This is the first subword in the token's index into head and deprel. Remember token_id is 1-indexed
+            first_subword_index = id_map[token_id] - 1
             new_token_spans.append(b)
             new_token_spans.append(b)
+            # For each expansion subword, add a separate token_spans entry and expand head and deprel.
+            # Head's value is the ID of the first subword in the token it belongs to
             for j in range(1, diff + 1):
                 new_token_spans.append(b + j)
                 new_token_spans.append(b + j)
-                head.insert(first_subword_index + j, str(first_subword_index + 1))
+                head.insert(first_subword_index + j, id_map[token_id])
                 deprel.insert(first_subword_index + j, "subword")
-            added += diff
+
+    heads = [int(x) for x in head]
+    for h in heads:
+        current = h
+        seen = set()
+        while current != 0:
+            if current in seen:
+                raise Exception(f"Cycle detected!\n{orig_head}\n{orig_deprel}\n{token_spans}\n\n{head}\n{deprel}")
+            seen.add(current)
+            current = heads[current - 1]
+
     output["token_spans"] = new_token_spans
 
 
