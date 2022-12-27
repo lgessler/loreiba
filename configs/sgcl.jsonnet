@@ -23,7 +23,7 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // Model settings
 // --------------------------------------------------------------------------------
 local max_length = 512;
-local static_masking = true;
+local static_masking = false;
 
 
 // For pretrained
@@ -111,16 +111,16 @@ local train_dataloader = {
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 4,
-    prefetch_factor: 2,
+    num_workers: 2,
+    prefetch_factor: 4,
 };
 local val_dataloader = {
     shuffle: false,
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 4,
-    prefetch_factor: 2,
+    num_workers: 2,
+    prefetch_factor: 4,
 };
 
 {
