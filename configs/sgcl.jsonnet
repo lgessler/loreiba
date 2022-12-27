@@ -105,13 +105,15 @@ local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
     tokenizer: tokenizer,
     static_masking: static_masking,
+    tree_config: tree_sgcl_config,
+    phrase_config: phrase_sgcl_config,
 };
 local train_dataloader = {
     shuffle: true,
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 2,
+    num_workers: 4,
     prefetch_factor: 4,
 };
 local val_dataloader = {
@@ -119,7 +121,7 @@ local val_dataloader = {
     batch_size: batch_size,
     collate_fn: collate_fn,
     pin_memory: true,
-    num_workers: 2,
+    num_workers: 4,
     prefetch_factor: 4,
 };
 

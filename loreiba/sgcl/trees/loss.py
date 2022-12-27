@@ -209,7 +209,7 @@ def syntax_tree_guided_loss(
     config: TreeSgclConfig,
     hidden_states: List[torch.Tensor],
     token_spans: torch.LongTensor,
-    head: torch.LongTensor,
+    tree_sets: List[List[Dict[str, Any]]],
 ) -> float:
     """
     Compute the tree-guided contrastive loss presented in Zhang et al. 2022
@@ -247,8 +247,7 @@ def syntax_tree_guided_loss(
     # lc.dill_dump(hidden_states, "/tmp/hidden_states")
     # lc.dill_dump(token_spans, "/tmp/token_spans")
     # lc.dill_dump(head, "/tmp/head")
-    tree_sets_for_batch = generate_subtrees(config, head)
-    loss = assess_tree_sgcl_batched(config, tree_sets_for_batch, hidden_states, token_spans)
+    loss = assess_tree_sgcl_batched(config, tree_sets, hidden_states, token_spans)
     return loss
 
 

@@ -1,10 +1,10 @@
 import logging
 import os
-from _socket import gethostname
 from typing import Any, Dict, Optional
 
 import torch
 import torch.nn as nn
+from _socket import gethostname
 from tango.common.exceptions import ConfigurationError
 from tango.integrations.torch import Model, TrainCallback
 from tango.integrations.transformers import Tokenizer
@@ -74,8 +74,7 @@ class SGCLModel(Model):
         masked_lm_loss = loss_fct(preds.view(-1, self.encoder.config.vocab_size), labels.view(-1))
         return masked_lm_loss
 
-    def forward(self, input_ids, token_type_ids, attention_mask, token_spans, head, deprel, labels=None):
-        token_spans = token_spans.reshape((token_spans.shape[0], -1, 2))
+    def forward(self, input_ids, token_type_ids, attention_mask, token_spans, head, deprel, labels=None, tree_sets=None, phrase_sets=None):
         encoder_outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
             input_ids=input_ids,
             token_type_ids=token_type_ids,
@@ -99,13 +98,13 @@ class SGCLModel(Model):
             loss = mlm_loss
             outputs["mlm_loss"] = mlm_loss
             if self.tree_sgcl_config is not None:
-                tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, head)
+                tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, tree_sets)
                 loss += tree_loss
                 print(f" tree_loss: {tree_loss:0.4f}", end="")
                 log_metric("tree", tree_loss)
                 outputs["tree_loss"] = tree_loss
             if self.phrase_sgcl_config is not None:
-                phrase_loss = phrase_guided_loss(self.phrase_sgcl_config, attentions, attention_mask, token_spans, head)
+                phrase_loss = phrase_guided_loss(self.phrase_sgcl_config, attentions, attention_mask, phrase_sets)
                 loss += phrase_loss
                 print(f" phrase_loss: {phrase_loss:0.4f}", end="")
                 log_metric("phrase", phrase_loss)

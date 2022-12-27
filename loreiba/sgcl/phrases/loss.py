@@ -93,7 +93,7 @@ def compute_phrase_set(
     head_map: Dict[int, int | None],
     all_subtrees: Dict[int, Dict[int, int | None]],
     t2wp: Dict[int, int],
-):
+) -> List[Dict[str, Any]]:
     shuffled_subtrees = list(all_subtrees.items())
     random.shuffle(shuffled_subtrees)
 
@@ -256,20 +256,22 @@ def compute_phrase_loss_batched(
     return loss
 
 
+def generate_phrase_sets(config: PhraseSgclConfig, head: torch.LongTensor, token_spans: torch.Tensor) -> List[List[Dict[str, Any]]]:
+    head_maps = get_head_map(head)
+    token_to_head_wordpiece_maps = [get_token_to_head_wordpiece_map(spans) for spans in token_spans]
+    subtrees = [get_all_subtrees(head_map) for head_map in head_maps]
+    return [
+        compute_phrase_set(config, head_maps[i], subtrees[i], token_to_head_wordpiece_maps[i])
+        for i in range(len(subtrees))
+    ]
+
+
 def phrase_guided_loss(
     config: PhraseSgclConfig,
     attentions: List[torch.Tensor],
     attention_mask: torch.Tensor,
-    token_spans: torch.Tensor,
-    head: torch.LongTensor,
+    phrase_sets: List[List[Dict[str, Any]]],
 ) -> float:
-    head_maps = get_head_map(head)
-    token_to_head_wordpiece_maps = [get_token_to_head_wordpiece_map(spans) for spans in token_spans]
-    subtrees = [get_all_subtrees(head_map) for head_map in head_maps]
-    phrase_sets_for_batch = [
-        compute_phrase_set(config, head_maps[i], subtrees[i], token_to_head_wordpiece_maps[i])
-        for i in range(len(subtrees))
-    ]
     # dill_dump(config, "/tmp/config")
     # dill_dump(attentions, "/tmp/attentions")
     # dill_dump(attention_mask, "/tmp/attention_mask")
@@ -279,7 +281,7 @@ def phrase_guided_loss(
     attentions = torch.stack(attentions, dim=0)
     # average across heads
     averaged_attentions = attentions.mean(dim=2)
-    loss = compute_phrase_loss_batched(config, averaged_attentions, attention_mask, phrase_sets_for_batch)
+    loss = compute_phrase_loss_batched(config, averaged_attentions, attention_mask, phrase_sets)
     return loss
 
 

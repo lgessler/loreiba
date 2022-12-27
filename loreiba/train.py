@@ -2,7 +2,6 @@ import logging
 import math
 import os
 import shutil
-from _socket import gethostname
 from itertools import islice
 from typing import Any, Dict, List, Optional, Set, Union, cast
 
@@ -10,6 +9,7 @@ import more_itertools
 import psutil
 import torch
 import torch.distributed as dist
+from _socket import gethostname
 from more_itertools import chunked
 from tango.common.dataset_dict import DatasetDictBase
 from tango.common.exceptions import ConfigurationError
