@@ -328,16 +328,16 @@ def extend_tree_with_subword_edges(output):
     for i in range(0, len(token_spans), 2):
         b, e = token_spans[i : i + 2]
         if e == b:
-            new_token_spans.append(b + added)
-            new_token_spans.append(e + added)
+            new_token_spans.append(b)
+            new_token_spans.append(e)
         else:
             diff = e - b
-            first_subword_index = b + added
-            new_token_spans.append(first_subword_index)
-            new_token_spans.append(first_subword_index)
+            first_subword_index = (i // 2) + added
+            new_token_spans.append(b)
+            new_token_spans.append(b)
             for j in range(1, diff + 1):
-                new_token_spans.append(first_subword_index + j)
-                new_token_spans.append(first_subword_index + j)
+                new_token_spans.append(b + j)
+                new_token_spans.append(b + j)
                 head.insert(first_subword_index + j, str(first_subword_index + 1))
                 deprel.insert(first_subword_index + j, "subword")
             added += diff
