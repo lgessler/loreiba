@@ -4,4 +4,4 @@ workspace:
 include_package: 
   - loreiba
 log_level: info
-file_friendly_logging: true
+file_friendly_logging: false
