@@ -7,9 +7,8 @@ from tango.integrations.transformers import Tokenizer
 from torch.nn.utils.rnn import pad_sequence
 from transformers import DataCollatorForLanguageModeling
 
-import loreiba.sgcl.trees as lst
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
-from loreiba.sgcl.phrases.loss import generate_phrase_sets
+from loreiba.sgcl.phrases.generation import generate_phrase_sets
 from loreiba.sgcl.trees.common import TreeSgclConfig
 from loreiba.sgcl.trees.generation import generate_subtrees
 
