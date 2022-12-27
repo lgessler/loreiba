@@ -75,7 +75,7 @@ local BERT_steps = 1e6;
 local BERT_total_instances = BERT_steps * BERT_batch_size;
 
 // our settings
-local batch_size = 32;
+local batch_size = 64;
 local instances_per_epoch = 256000;
 local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
 
