@@ -319,12 +319,12 @@ class ReadUDTreebank(Step):
         return DatasetDict({"train": train_dataset, "dev": dev_dataset, "test": test_dataset})
 
 
-def extend_tree_with_subword_edges(output, i):
+def extend_tree_with_subword_edges(output):
     added = 0
     new_token_spans = []
-    token_spans = output["token_spans"][i]
-    head = output["head"][i]
-    deprel = output["deprel"][i]
+    token_spans = output["token_spans"]
+    head = output["head"]
+    deprel = output["deprel"]
     for i in range(0, len(token_spans), 2):
         b, e = token_spans[i : i + 2]
         if e == b:
@@ -341,8 +341,7 @@ def extend_tree_with_subword_edges(output, i):
                 head.insert(first_subword_index + j, str(first_subword_index + 1))
                 deprel.insert(first_subword_index + j, "subword")
             added += diff
-    output["token_spans"].pop(i)
-    output["token_spans"].insert(i, new_token_spans)
+    output["token_spans"] = new_token_spans
 
 
 @Step.register("loreiba.data::stanza_parse_dataset")
@@ -419,7 +418,7 @@ class StanzaParseDataset(Step):
                 output["attention_mask"] = data[i]["attention_mask"]
                 output["token_spans"] = data[i]["token_spans"]
                 if add_subword_edges:
-                    extend_tree_with_subword_edges(output, i)
+                    extend_tree_with_subword_edges(output)
 
             dataset_dict[split] = datasets.Dataset.from_list(outputs, features=features)
             self.logger.info(f"Finished processing {split}")
