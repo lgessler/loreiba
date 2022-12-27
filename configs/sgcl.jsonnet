@@ -59,7 +59,7 @@ local model = {
     tokenizer: tokenizer,
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,
-    //phrase_sgcl_config: phrase_sgcl_config,
+    phrase_sgcl_config: phrase_sgcl_config,
 };
 
 // --------------------------------------------------------------------------------
@@ -75,7 +75,7 @@ local BERT_steps = 1e6;
 local BERT_total_instances = BERT_steps * BERT_batch_size;
 
 // our settings
-local batch_size = 64;
+local batch_size = 32;
 local instances_per_epoch = 256000;
 local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
 
@@ -155,7 +155,7 @@ local val_dataloader = {
             language_code: language_code_index[language],
             allow_retokenization: false,  // we tokenized earlier
             stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
-            batch_size: 256,
+            batch_size: 128,
         },
         model_inputs: {
             type: "loreiba.data::finalize",
@@ -164,7 +164,7 @@ local val_dataloader = {
             tokenizer: tokenizer,
         },
         trained_model: {
-            type: "torch::train",
+            type: "loreiba.train::train",
             model: model,
             dataset_dict: { type: "ref", ref: "model_inputs" },
             training_engine: training_engine,
