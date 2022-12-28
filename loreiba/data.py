@@ -2,6 +2,7 @@ import dataclasses
 import os
 import random
 import shutil
+import sys
 from itertools import chain, repeat
 from pathlib import Path
 from typing import Iterable, List, Literal, Optional, Tuple
@@ -186,12 +187,12 @@ class TokenizePlus(Step):
         corresponds to the original i-th token.
         This function inserts special tokens.
         """
-        tokens, offsets = self._intra_word_tokenize(string_tokens, tokenizer, max_wordpieces - 2)
+        wp_ids, offsets = self._intra_word_tokenize(string_tokens, tokenizer, max_wordpieces - 2)
         # Handle special tokens
-        tokens = [tokenizer.cls_token_id] + tokens + [tokenizer.sep_token_id]
+        wp_ids = [tokenizer.cls_token_id] + wp_ids + [tokenizer.sep_token_id]
         offsets = self._increment_offsets(offsets, 1)
         offsets = [(0, 0)] + offsets + [(offsets[-1][1] + 1,) * 2]
-        return tokens, offsets
+        return wp_ids, offsets
 
     def _process_split(
         self, split: Dataset, tokenizer: Tokenizer, max_length: Optional[int], token_column: str
@@ -203,7 +204,8 @@ class TokenizePlus(Step):
             flattened = []
             for pair in token_spans:
                 flattened.extend(pair)
-            output.append({"input_ids": wp_ids, "token_spans": flattened, token_column: sentence})
+            d = {"input_ids": wp_ids, "token_spans": flattened, token_column: sentence[: len(token_spans) - 2]}
+            output.append(d)
 
         features = datasets.Features(
             {
@@ -337,6 +339,7 @@ def extend_tree_with_subword_edges(output):
     # Map from old token IDs to new token IDs after subword expansions
     id_map = {}
     running_diff = 0
+    assert len(token_spans) // 2 == len(head) + 2
     for token_id in range(0, len(token_spans) // 2):
         id_map[token_id] = token_id + running_diff
         b, e = token_spans[token_id * 2 : (token_id + 1) * 2]
@@ -411,9 +414,14 @@ class StanzaParseDataset(Step):
 
         dataset_dict = {}
 
-        def sentence_to_record(s):
+        def sentence_to_record(s, orig):
             # filter out supertokens
             s = [t for t in s if isinstance(t["id"], int)]
+            if len(orig) != len([t["text"] for t in s]):
+                print(orig, len(orig), file=sys.stderr)
+                print([t["text"] for t in s], len([t["text"] for t in s]), file=sys.stderr)
+                print([t["head"] for t in s], len([t["head"] for t in s]), file=sys.stderr)
+                raise Exception("Stanza returned a different number of tokens than we started with!")
             return {
                 "tokens": [t["text"] for t in s],
                 "lemmas": [t.get("lemma", "") for t in s],
@@ -439,15 +447,13 @@ class StanzaParseDataset(Step):
         )
 
         for split, data in dataset.items():
-            space_separated = [" ".join(ts) for ts in data["tokens"]]
-            chunks = list(mit.chunked(space_separated, batch_size))
-
+            chunks = list(mit.chunked(data["tokens"], batch_size))
             outputs = []
             for chunk in Tqdm.tqdm(chunks, desc=f"Parsing split {split}..."):
-                output = pipeline("\n\n".join(chunk))
-                for sentence in output.sentences:
-                    s = sentence.to_dict()
-                    record = sentence_to_record(s)
+                inputs = [stanza.Document([], text=[sentence for sentence in chunk])]
+                output = pipeline(inputs)[0].to_dict()
+                for i, sentence in enumerate(output):
+                    record = sentence_to_record(sentence, chunk[i])
                     outputs.append(record)
 
             for i, output in enumerate(outputs):
