@@ -86,8 +86,8 @@ class SGCLModel(Model):
         mlm_preds = self.lm_head(x)
 
         def log_metric(fname, value):
-            if gethostname() == 'avi':
-                with open(f"/tmp/{fname}", 'a') as f:
+            if gethostname() == "avi":
+                with open(f"/tmp/{fname}", "a") as f:
                     f.write(f"{value},")
 
         if labels is not None:

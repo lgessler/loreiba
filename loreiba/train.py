@@ -205,9 +205,7 @@ class Train(Step):
             self.logger.info("Training on %d GPU%s", device_count, "s" if device_count > 1 else "")
         else:
             devices = [-1] * device_count
-            self.logger.info(
-                "Training on CPU with %d worker%s", device_count, "s" if device_count > 1 else ""
-            )
+            self.logger.info("Training on CPU with %d worker%s", device_count, "s" if device_count > 1 else "")
         return devices
 
     def _train(
@@ -245,20 +243,15 @@ class Train(Step):
 
         if validate_every is not None and validation_split is None:
             raise ConfigurationError(
-                "You have set a validation interval, but no validation split. "
-                "That's probably unintentional."
+                "You have set a validation interval, but no validation split. " "That's probably unintentional."
             )
 
         if (train_steps is not None) == (train_epochs is not None):
-            raise ConfigurationError(
-                "One of 'train_steps' or 'train_epochs' needs to be specified, but not both."
-            )
+            raise ConfigurationError("One of 'train_steps' or 'train_epochs' needs to be specified, but not both.")
 
         if validate_every is not None and checkpoint_every is not None:
             if checkpoint_every % validate_every != 0 and validate_every % checkpoint_every != 0:
-                raise ConfigurationError(
-                    "'checkpoint_every' needs to be multiple of 'validate_every' or vice versa"
-                )
+                raise ConfigurationError("'checkpoint_every' needs to be multiple of 'validate_every' or vice versa")
 
         config = TrainConfig(
             self.unique_id,
@@ -325,9 +318,7 @@ class Train(Step):
 
         # Load best checkpoint before returning model.
         if config.final_weights_path.is_file():
-            self.logger.info(
-                f"Loading best weights from {str(config.final_weights_path.resolve())}"
-            )
+            self.logger.info(f"Loading best weights from {str(config.final_weights_path.resolve())}")
             state = torch.load(config.final_weights_path, map_location="cpu")
             # We use `strict=False` because there might be missing keys due to weight tying.
             final_model.load_state_dict(state, strict=False)
@@ -397,9 +388,7 @@ def _train(
             steps_per_epoch = len(train_dataloader)
         except TypeError:
             raise ConfigurationError("You must set 'train_steps' for streaming/iterable datasets")
-        config.train_steps = math.ceil(
-            steps_per_epoch * (config.train_epochs or 1) / config.grad_accum
-        )
+        config.train_steps = math.ceil(steps_per_epoch * (config.train_epochs or 1) / config.grad_accum)
 
     assert config.train_steps is not None  # for mypy
 
@@ -408,9 +397,7 @@ def _train(
             try:
                 config.validation_steps = len(validation_dataloader)
             except TypeError:
-                raise ConfigurationError(
-                    "You must set 'validation_steps' for streaming/iterable datasets"
-                )
+                raise ConfigurationError("You must set 'validation_steps' for streaming/iterable datasets")
 
     # Make sure we're using a DistributedSampler during distributed training.
     if config.is_distributed:
@@ -474,9 +461,9 @@ def _train(
         """
         if val_metric is not None:
             if best_val_metric_checkpointed is not None:
-                return (
-                    config.minimize_val_metric and val_metric <= best_val_metric_checkpointed
-                ) or (not config.minimize_val_metric and val_metric >= best_val_metric_checkpointed)
+                return (config.minimize_val_metric and val_metric <= best_val_metric_checkpointed) or (
+                    not config.minimize_val_metric and val_metric >= best_val_metric_checkpointed
+                )
             else:
                 return False
         else:
@@ -503,16 +490,12 @@ def _train(
             f"val_{config.val_metric_name}": val_metric,
             f"best_{config.val_metric_name}": best_val_metric,
             f"best_{config.val_metric_name}_checkpointed": best_val_metric_checkpointed,
-            "callbacks": [
-                callback.state_dict() for callback in callbacks  # type: ignore[union-attr]
-            ],
+            "callbacks": [callback.state_dict() for callback in callbacks],  # type: ignore[union-attr]
         }
 
         # For reason mypy can't figure out that `training_engine` is a `TrainingEngine` in this closure,
         # and not a `Lazy[TrainingEngine]`.
-        cast(TrainingEngine, training_engine).save_checkpoint(
-            config.state_path_for_step(step), train_state
-        )
+        cast(TrainingEngine, training_engine).save_checkpoint(config.state_path_for_step(step), train_state)
 
         # Link to most recent state path.
         # NOTE: While hard linking would be preferable to creating symlinks, some train engines
@@ -521,17 +504,13 @@ def _train(
         if config.is_local_main_process:
             if config.state_path.is_symlink():
                 config.state_path.unlink()
-            config.state_path.symlink_to(
-                config.state_path_for_step(step).relative_to(config.work_dir)
-            )
+            config.state_path.symlink_to(config.state_path_for_step(step).relative_to(config.work_dir))
 
             # Link to best state path.
             if is_best_checkpoint():
                 if config.best_state_path.is_symlink():
                     config.best_state_path.unlink()
-                config.best_state_path.symlink_to(
-                    config.state_path_for_step(step).relative_to(config.work_dir)
-                )
+                config.best_state_path.symlink_to(config.state_path_for_step(step).relative_to(config.work_dir))
 
             # Clean up stale checkpoints.
             if config.remove_stale_checkpoints:
@@ -581,10 +560,10 @@ def _train(
     try:
         for step, (epoch, batch) in train_batch_iterator:
             if gethostname() == "avi":
-                with open(os.path.join(config.work_dir, 'cuda'), 'a') as f:
+                with open(os.path.join(config.work_dir, "cuda"), "a") as f:
                     f.write(f"{torch.cuda.max_memory_allocated()},")
-                with open(os.path.join(config.work_dir, 'cpu'), 'a') as f:
-                    resident_memory = psutil.Process().memory_info().rss / 1024 ** 2
+                with open(os.path.join(config.work_dir, "cpu"), "a") as f:
+                    resident_memory = psutil.Process().memory_info().rss / 1024**2
                     f.write(f"{resident_memory},")
             if epoch != current_epoch:
                 # Start of new epoch.
@@ -650,9 +629,7 @@ def _train(
                 should_validate_this_step = False
 
             # Gather average loss across all workers.
-            if (
-                config.should_log_this_step(step) or should_validate_this_step
-            ) and config.is_distributed:
+            if (config.should_log_this_step(step) or should_validate_this_step) and config.is_distributed:
                 batch_loss_tensor = torch.tensor(batch_loss, device=device)
                 dist.all_reduce(batch_loss_tensor)
                 batch_loss = batch_loss_tensor.detach().item() / config.world_size
@@ -715,9 +692,7 @@ def _train(
                             val_metric = val_metric_tensor.item() / config.world_size
 
                         # Update progress bar.
-                        if config.is_local_main_process and config.should_log_this_val_step(
-                            val_step
-                        ):
+                        if config.is_local_main_process and config.should_log_this_val_step(val_step):
                             val_batch_iterator.set_postfix(**{config.val_metric_name: val_metric})
 
                         # Clean up.
@@ -788,9 +763,7 @@ def _train(
         # already saving the final weights.
         if config.final_weights_path.is_file():
             os.remove(config.final_weights_path)
-        training_engine.save_complete_weights_from_checkpoint(
-            config.best_state_path, config.final_weights_path
-        )
+        training_engine.save_complete_weights_from_checkpoint(config.best_state_path, config.final_weights_path)
 
     if not config.is_distributed:
         return training_engine.model

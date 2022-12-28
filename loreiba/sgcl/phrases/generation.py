@@ -32,10 +32,10 @@ def get_token_to_head_wordpiece_map(spans):
 
 
 def compute_phrase_set(
-        config: PhraseSgclConfig,
-        head_map: Dict[int, int | None],
-        all_subtrees: Dict[int, Dict[int, int | None]],
-        t2wp: Dict[int, int],
+    config: PhraseSgclConfig,
+    head_map: Dict[int, int | None],
+    all_subtrees: Dict[int, Dict[int, int | None]],
+    t2wp: Dict[int, int],
 ) -> List[Dict[str, Any]]:
     shuffled_subtrees = list(all_subtrees.items())
     random.shuffle(shuffled_subtrees)
@@ -66,7 +66,9 @@ def compute_phrase_set(
     return phrase_set
 
 
-def generate_phrase_sets(config: PhraseSgclConfig, head: torch.LongTensor, token_spans: torch.Tensor) -> List[List[Dict[str, Any]]]:
+def generate_phrase_sets(
+    config: PhraseSgclConfig, head: torch.LongTensor, token_spans: torch.Tensor
+) -> List[List[Dict[str, Any]]]:
     head_maps = get_head_map(head)
     token_to_head_wordpiece_maps = [get_token_to_head_wordpiece_map(spans) for spans in token_spans]
     subtrees = [get_all_subtrees(head_map) for head_map in head_maps]
