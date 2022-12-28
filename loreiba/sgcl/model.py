@@ -72,6 +72,8 @@ class SGCLModel(Model):
             return 0.0
         loss_fct = CrossEntropyLoss(ignore_index=-100)
         masked_lm_loss = loss_fct(preds.view(-1, self.encoder.config.vocab_size), labels.view(-1))
+        if not self.training:
+            print(masked_lm_loss, (labels != -100).sum())
         return masked_lm_loss
 
     def forward(
