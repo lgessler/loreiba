@@ -184,7 +184,8 @@ class TokenizePlus(Step):
                 offsets.append((len(tokens), len(tokens) + len(wp_ids) - 1))
                 tokens.extend(wp_ids)
             else:
-                offsets.append(None)
+                tokens.append(tokenizer.unk_token_id)
+                offsets.append((len(tokens), len(tokens)))
         return tokens, offsets
 
     @staticmethod
@@ -197,7 +198,7 @@ class TokenizePlus(Step):
         self,
         string_tokens: List[str],
         tokenizer: Tokenizer,
-    ) -> Tuple[List[str], List[Optional[Tuple[int, int]]]]:
+    ) -> Tuple[List[int], List[Optional[Tuple[int, int]]]]:
         """
         Tokenizes each word into wordpieces separately and returns the wordpiece IDs.
         Also calculates offsets such that tokens[offsets[i][0]:offsets[i][1] + 1]
@@ -205,7 +206,7 @@ class TokenizePlus(Step):
         This function inserts special tokens.
         """
         tokens, offsets = self._intra_word_tokenize(string_tokens, tokenizer)
-        tokens = [tokenizer.bos_token_id] + tokens + [tokenizer.eos_token_id]
+        tokens = [tokenizer.cls_token_id] + tokens + [tokenizer.sep_token_id]
         offsets = self._increment_offsets(offsets, 1)
         return tokens, offsets
 
@@ -215,12 +216,15 @@ class TokenizePlus(Step):
         sentences = split[token_column]
         output = []
         for sentence in sentences:
-            tokens, token_spans = self.intra_word_tokenize(sentence, tokenizer)
-            # Assume 2 special tokens
+            wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer)
+            # Sometimes the tokenizer isn't able to produce anything
+            token_spans = [(0, 0)] + token_spans + [(token_spans[-1][1] + 1,) * 2]
             assert len(token_spans) == len(sentence) + 2
-            # tokenizer might have truncated wordpieces--account for that here
-            # flatten this for storage
-            output.append({"input_ids": tokens, "token_spans": token_spans, token_column: sentence})
+            # Assume 2 special tokens
+            flattened = []
+            for pair in token_spans:
+                flattened.extend(pair)
+            output.append({"input_ids": wp_ids, "token_spans": flattened, token_column: sentence})
 
         features = datasets.Features(
             {
