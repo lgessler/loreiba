@@ -1,9 +1,10 @@
+import dataclasses
 import os
 import random
 import shutil
 from itertools import chain, repeat
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple, List, Iterable
 
 import conllu
 import datasets
@@ -162,47 +163,69 @@ class TokenizePlus(Step):
     CACHEABLE = True
     FORMAT = DatasetsFormat()
 
+    def _intra_word_tokenize(
+        self,
+        string_tokens: List[str],
+        tokenizer: Tokenizer,
+    ) -> Tuple[List[int], List[Optional[Tuple[int, int]]]]:
+        tokens = []
+        offsets = []
+        for token_string in string_tokens:
+            wordpieces = tokenizer.encode_plus(
+                token_string,
+                add_special_tokens=False,
+                return_tensors=None,
+                return_offsets_mapping=False,
+                return_attention_mask=False,
+            )
+            wp_ids = wordpieces["input_ids"]
+
+            if len(wp_ids) > 0:
+                offsets.append((len(tokens), len(tokens) + len(wp_ids) - 1))
+                tokens.extend(wp_ids)
+            else:
+                offsets.append(None)
+        return tokens, offsets
+
+    @staticmethod
+    def _increment_offsets(
+        offsets: Iterable[Optional[Tuple[int, int]]], increment: int
+    ) -> List[Optional[Tuple[int, int]]]:
+        return [None if offset is None else (offset[0] + increment, offset[1] + increment) for offset in offsets]
+
+    def intra_word_tokenize(
+        self,
+        string_tokens: List[str],
+        tokenizer: Tokenizer,
+    ) -> Tuple[List[str], List[Optional[Tuple[int, int]]]]:
+        """
+        Tokenizes each word into wordpieces separately and returns the wordpiece IDs.
+        Also calculates offsets such that tokens[offsets[i][0]:offsets[i][1] + 1]
+        corresponds to the original i-th token.
+        This function inserts special tokens.
+        """
+        tokens, offsets = self._intra_word_tokenize(string_tokens, tokenizer)
+        tokens = [tokenizer.bos_token_id] + tokens + [tokenizer.eos_token_id]
+        offsets = self._increment_offsets(offsets, 1)
+        return tokens, offsets
+
     def _process_split(
         self, split: Dataset, tokenizer: Tokenizer, max_length: Optional[int], token_column: str
     ) -> Dataset:
         sentences = split[token_column]
         output = []
         for sentence in sentences:
-            input_str = " ".join(sentence)
-            r = tokenizer.encode_plus(
-                input_str,
-                add_special_tokens=True,
-                return_token_type_ids=True,
-                return_length=True,
-                return_attention_mask=True,
-                truncation=True,
-                max_length=max_length,
-                return_offsets_mapping=True,
-            )
-            # b, e are substring indices into the input_str showing how the wordpiece at index i
-            # corresponds to a substring in the input. Special tokens are indexed at (0,0).
-            # We can calculate which token index a wordpiece corresponds to by counting
-            # the number of spaces to the left. Note that these are 0 indexes and special tokens
-            # are indexed as corresponding to token index -1
-            token_indexes = [input_str[:b].count(" ") if (b, e) != (0, 0) else -1 for b, e in r["offset_mapping"]]
-            # Now get spans
-            token_spans = token_spans_from_wordpiece_token_indexes(token_indexes)
+            tokens, token_spans = self.intra_word_tokenize(sentence, tokenizer)
             # Assume 2 special tokens
             assert len(token_spans) == len(sentence) + 2
-            del r["offset_mapping"]
-            del r["length"]
             # tokenizer might have truncated wordpieces--account for that here
-            r[token_column] = sentence[: len(token_spans) - 2]
             # flatten this for storage
-            r["token_spans"] = [v for token_span in token_spans for v in token_span]
-            output.append(dict(r))
+            output.append({"input_ids": tokens, "token_spans": token_spans, token_column: sentence})
 
         features = datasets.Features(
             {
                 token_column: Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
@@ -428,8 +451,6 @@ class StanzaParseDataset(Step):
                 "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
@@ -448,8 +469,6 @@ class StanzaParseDataset(Step):
 
             for i, output in enumerate(outputs):
                 output["input_ids"] = data[i]["input_ids"]
-                output["token_type_ids"] = data[i]["token_type_ids"]
-                output["attention_mask"] = data[i]["attention_mask"]
                 output["token_spans"] = data[i]["token_spans"]
                 if add_subword_edges:
                     extend_tree_with_subword_edges(output)
@@ -489,8 +508,6 @@ class Finalize(Step):
         features = datasets.Features(
             {
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "head": Sequence(feature=Value(dtype="int16", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=ClassLabel(names=deprels, id=None), length=-1, id=None),
@@ -512,8 +529,6 @@ class Finalize(Step):
                 ):
                     new_row = {
                         "input_ids": v["input_ids"],
-                        "token_type_ids": v["token_type_ids"],
-                        "attention_mask": v["attention_mask"],
                         "token_spans": v["token_spans"],
                         "head": [int(i) for i in v["head"]],
                         "deprel": v["deprel"],
