@@ -9,9 +9,9 @@ from tango.common.exceptions import ConfigurationError
 from tango.integrations.torch import Model, TrainCallback
 from tango.integrations.transformers import Tokenizer
 from torch.nn import CrossEntropyLoss
-from transformers import AutoModel, RobertaConfig, RobertaModel
+from transformers import AutoModel, BertConfig, BertModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
-from transformers.models.roberta.modeling_roberta import RobertaLMHead
+from transformers.models.bert.modeling_bert import BertLMPredictionHead
 
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 from loreiba.sgcl.phrases.loss import phrase_guided_loss
@@ -34,35 +34,35 @@ class SGCLModel(Model):
         tree_sgcl_config: Optional[TreeSgclConfig] = None,
         phrase_sgcl_config: Optional[PhraseSgclConfig] = None,
         pretrained_model_name_or_path: Optional[str] = None,
-        roberta_config: Dict[str, Any] = None,
+        bert_config: Dict[str, Any] = None,
         *args,
         **kwargs,
     ):
         """
         Provide `pretrained_model_name_or_path` if you want to use a pretrained model.
-        Keep `roberta_config` regardless as we need it for the LM head.
+        Keep `bert_config` regardless as we need it for the LM head.
 
         Args:
             pretrained_model_name_or_path:
-            roberta_config:
+            bert_config:
             *args:
             **kwargs:
         """
         super().__init__()
 
-        if pretrained_model_name_or_path is None and roberta_config is None:
-            raise ConfigurationError(f"Must provide either a pretrained model name or a Roberta config.")
+        if pretrained_model_name_or_path is None and bert_config is None:
+            raise ConfigurationError(f"Must provide either a pretrained model name or a BERT config.")
 
-        config = RobertaConfig(
-            **roberta_config, vocab_size=len(tokenizer.get_vocab()), position_embedding_type="relative_key_query"
+        config = BertConfig(
+            **bert_config, vocab_size=len(tokenizer.get_vocab()), position_embedding_type="relative_key_query"
         )
         if pretrained_model_name_or_path is not None:
             logger.info(f"Initializing transformer stack from a pretrained model {pretrained_model_name_or_path}")
             self.encoder = AutoModel.from_pretrained(pretrained_model_name_or_path)
         else:
-            logger.info(f"Initializing a new Roberta model with config {config}")
-            self.encoder = RobertaModel(config=config, add_pooling_layer=False)
-        self.lm_head = RobertaLMHead(config=config)
+            logger.info(f"Initializing a new BERT model with config {config}")
+            self.encoder = BertModel(config=config, add_pooling_layer=False)
+        self.lm_head = BertLMPredictionHead(config=config)
         self.pad_id = tokenizer.pad_token_id
         self.tree_sgcl_config = tree_sgcl_config
         self.phrase_sgcl_config = phrase_sgcl_config

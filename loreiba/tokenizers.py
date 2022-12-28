@@ -135,7 +135,7 @@ def train_bert_tokenizer(
 def simple_train_tokenizer(sentences: List[List[str]], output_path: str, vocab_size: int = 10_000):
     sentences = [" ".join(s) for s in sentences]
     batched_sentences = mit.chunked(sentences, 32)
-    t = RobertaTokenizerFast.from_pretrained("roberta-base")
+    t = BertTokenizerFast.from_pretrained("bert-base-cased")
     t = t.train_new_from_iterator(batched_sentences, vocab_size=vocab_size)
     t.save_pretrained(output_path)
     return t

@@ -37,14 +37,14 @@ local static_masking = false;
 
 // For non-pretrained
 local FROM_PRETRAINED = false;
-local roberta_config = {
+local bert_config = {
     hidden_size: 128,
     num_hidden_layers: 3,
     num_attention_heads: 8,
     intermediate_size: 512,
     max_position_embeddings: max_length,
 };
-local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(roberta_config);
+local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local tree_sgcl_config = {
     subtree_sampling_method: {type: "random", max_number: 3},
@@ -55,7 +55,7 @@ local phrase_sgcl_config = {
 };
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
-    roberta_config: roberta_config,
+    bert_config: bert_config,
     tokenizer: tokenizer,
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,
