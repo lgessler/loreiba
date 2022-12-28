@@ -96,3 +96,4 @@ class TreeSgclConfig(FromParams):
         self.subtree_sampling_method = subtree_sampling_method
         self.include_root_in_sims = include_root_in_sims
         self.temperature = temperature
+        self.last_layer_only = last_layer_only
