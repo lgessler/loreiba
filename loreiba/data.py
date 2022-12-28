@@ -187,8 +187,10 @@ class TokenizePlus(Step):
         This function inserts special tokens.
         """
         tokens, offsets = self._intra_word_tokenize(string_tokens, tokenizer, max_wordpieces - 2)
+        # Handle special tokens
         tokens = [tokenizer.cls_token_id] + tokens + [tokenizer.sep_token_id]
         offsets = self._increment_offsets(offsets, 1)
+        offsets = [(0, 0)] + offsets + [(offsets[-1][1] + 1,) * 2]
         return tokens, offsets
 
     def _process_split(
@@ -198,10 +200,6 @@ class TokenizePlus(Step):
         output = []
         for sentence in sentences:
             wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer, max_length)
-            # Sometimes the tokenizer isn't able to produce anything
-            token_spans = [(0, 0)] + token_spans + [(token_spans[-1][1] + 1,) * 2]
-            assert len(token_spans) == len(sentence) + 2
-            # Assume 2 special tokens
             flattened = []
             for pair in token_spans:
                 flattened.extend(pair)
