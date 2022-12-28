@@ -74,9 +74,22 @@ class SGCLModel(Model):
         masked_lm_loss = loss_fct(preds.view(-1, self.encoder.config.vocab_size), labels.view(-1))
         return masked_lm_loss
 
-    def forward(self, input_ids, token_spans, head, deprel, labels=None, tree_sets=None, phrase_sets=None):
+    def forward(
+        self,
+        input_ids,
+        attention_mask,
+        token_type_ids,
+        token_spans,
+        head,
+        deprel,
+        labels=None,
+        tree_sets=None,
+        phrase_sets=None,
+    ):
         encoder_outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
             input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
             output_hidden_states=True,
             output_attentions=True,
         )

@@ -204,7 +204,13 @@ class TokenizePlus(Step):
             flattened = []
             for pair in token_spans:
                 flattened.extend(pair)
-            d = {"input_ids": wp_ids, "token_spans": flattened, token_column: sentence[: len(token_spans) - 2]}
+            d = {
+                "input_ids": wp_ids,
+                "token_spans": flattened,
+                token_column: sentence[: len(token_spans) - 2],
+                "attention_mask": [1] * len(wp_ids),
+                "token_type_ids": [0] * len(wp_ids),
+            }
             output.append(d)
 
         features = datasets.Features(
@@ -212,6 +218,8 @@ class TokenizePlus(Step):
                 token_column: Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
         return datasets.Dataset.from_list(output, features=features)
@@ -442,6 +450,8 @@ class StanzaParseDataset(Step):
                 "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
@@ -458,6 +468,8 @@ class StanzaParseDataset(Step):
 
             for i, output in enumerate(outputs):
                 output["input_ids"] = data[i]["input_ids"]
+                output["token_type_ids"] = data[i]["token_type_ids"]
+                output["attention_mask"] = data[i]["attention_mask"]
                 output["token_spans"] = data[i]["token_spans"]
                 if add_subword_edges:
                     extend_tree_with_subword_edges(output)
@@ -497,6 +509,8 @@ class Finalize(Step):
         features = datasets.Features(
             {
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+                "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "head": Sequence(feature=Value(dtype="int16", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=ClassLabel(names=deprels, id=None), length=-1, id=None),
@@ -518,6 +532,8 @@ class Finalize(Step):
                 ):
                     new_row = {
                         "input_ids": v["input_ids"],
+                        "token_type_ids": v["token_type_ids"],
+                        "attention_mask": v["attention_mask"],
                         "token_spans": v["token_spans"],
                         "head": [int(i) for i in v["head"]],
                         "deprel": v["deprel"],
