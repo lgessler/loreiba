@@ -197,8 +197,10 @@ def assess_tree_sgcl_batched(
     combined_mask = torch.concat((reduced_positive_mask.unsqueeze(-1), reduced_negative_mask), dim=-1)
 
     softmaxed = -masked_log_softmax(combined / config.temperature, combined_mask, dim=-1)[:, :, :, 0]
+    if config.last_layer_only:
+        softmaxed = softmaxed[-1]
     losses = softmaxed.masked_select(reduced_positive_mask)
-    loss = (losses.sum(-1) / losses.ne(0).sum(-1)).mean(dim=0).mean(dim=0)
+    loss = losses.mean()
     return loss
 
 
@@ -246,21 +248,19 @@ def syntax_tree_guided_loss(
     # lc.dill_dump(config, "/tmp/config")
     # lc.dill_dump(hidden_states, "/tmp/hidden_states")
     # lc.dill_dump(token_spans, "/tmp/token_spans")
-    # lc.dill_dump(head, "/tmp/head")
+    # lc.dill_dump(tree_sets, "/tmp/tree_sets")
     loss = assess_tree_sgcl_batched(config, tree_sets, hidden_states, token_spans)
     return loss
 
 
 def scratch():
     config = lc.dill_load("/tmp/config")
-    config.include_root_in_sims = False
     hidden_states = lc.dill_load("/tmp/hidden_states")
     token_spans = lc.dill_load("/tmp/token_spans")
-    head = lc.dill_load("/tmp/head")
+    tree_sets_for_batch = lc.dill_load("/tmp/tree_sets")
     # head_map = {0: None, **{i + 1: h.item() for i, h in enumerate(head[0])}}
     # all_subtrees = get_all_subtrees(config, head_map)
     # eligible_subtrees = sorted(get_eligible_subtrees(config, head_map, all_subtrees), key=lambda x: x["root_id"])
     # output = generate_negative_trees(config, all_subtrees, **eligible_subtrees[2])
 
-    tree_sets_for_batch = generate_subtrees(config, head)
     assess_tree_sgcl_batched(config, tree_sets_for_batch, hidden_states, token_spans)

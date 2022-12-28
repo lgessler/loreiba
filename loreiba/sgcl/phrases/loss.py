@@ -189,6 +189,8 @@ def compute_phrase_loss_batched(
     positive_sims = softmaxed_sims[:, :, :, 0]
 
     # take the mean of InfoNCE across all samples
+    if config.last_layer_only:
+        positive_sims = positive_sims[0]
     losses = positive_sims.masked_select(positive_mask.unsqueeze(0))
     loss = losses.mean()
     return loss

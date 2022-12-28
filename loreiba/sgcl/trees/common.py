@@ -49,6 +49,7 @@ class TreeSgclConfig(FromParams):
         subtree_sampling_method: SubtreeSamplingMethod = AllSubtreeSamplingMethod(),
         include_root_in_sims: bool = False,
         temperature: float = 0.1,
+        last_layer_only: bool = True,
     ):
         """
         Args:
@@ -81,6 +82,9 @@ class TreeSgclConfig(FromParams):
                 itself.
             temperature:
                 Temperature hyperparameter for InfoNCE loss
+            last_layer_only:
+                If True, assess the tree-based loss term only on the last layer. Otherwise, assess on all layers
+                and take the mean.
         """
         self.max_negative_per_subtree = max_negative_per_subtree
         self.min_subtree_size = min_subtree_size
