@@ -4,7 +4,7 @@ import random
 import shutil
 from itertools import chain, repeat
 from pathlib import Path
-from typing import Literal, Optional, Tuple, List, Iterable
+from typing import Iterable, List, Literal, Optional, Tuple
 
 import conllu
 import datasets
@@ -132,31 +132,6 @@ class ReadTextOnlyConllu(Step):
         return DatasetDict({"train": train_dataset, "dev": dev_dataset})
 
 
-def token_spans_from_wordpiece_token_indexes(token_indexes):
-    """
-    Assume as input a sequence that maps from wordpieces to original tokens, e.g.:
-      [-1, 0, 0, 1, -1] for ["[CLS]", "lem", "##ming", "fur", "[SEP]"]
-    Turn that sequence into a sequence of tuples representing spans that collectively partition the wordspace indexes
-    such that each subdivision corresponds to an original token. For example:
-      [(0,0), (1,2), (3,3), (4,4)
-    """
-    token_spans = []
-    i = 0
-    while i < len(token_indexes):
-        current = token_indexes[i]
-        if current == -1:
-            token_spans.append((i, i))
-            i += 1
-        else:
-            j = i
-            while j < len(token_indexes) and token_indexes[j + 1] == token_indexes[i]:
-                j += 1
-            token_spans.append((i, j))
-            i = j + 1
-
-    return token_spans
-
-
 @Step.register("loreiba.data::tokenize_plus")
 class TokenizePlus(Step):
     DETERMINISTIC = True
@@ -167,6 +142,7 @@ class TokenizePlus(Step):
         self,
         string_tokens: List[str],
         tokenizer: Tokenizer,
+        max_wordpieces: int,
     ) -> Tuple[List[int], List[Optional[Tuple[int, int]]]]:
         tokens = []
         offsets = []
@@ -180,9 +156,13 @@ class TokenizePlus(Step):
             )
             wp_ids = wordpieces["input_ids"]
 
+            # Stop early if adding this token would exceed our budget
+            if len(tokens) + len(wp_ids) > max_wordpieces:
+                break
+
             if len(wp_ids) > 0:
-                offsets.append((len(tokens), len(tokens) + len(wp_ids) - 1))
                 tokens.extend(wp_ids)
+                offsets.append((len(tokens), len(tokens) + len(wp_ids) - 1))
             else:
                 tokens.append(tokenizer.unk_token_id)
                 offsets.append((len(tokens), len(tokens)))
@@ -198,6 +178,7 @@ class TokenizePlus(Step):
         self,
         string_tokens: List[str],
         tokenizer: Tokenizer,
+        max_wordpieces: int,
     ) -> Tuple[List[int], List[Optional[Tuple[int, int]]]]:
         """
         Tokenizes each word into wordpieces separately and returns the wordpiece IDs.
@@ -205,7 +186,7 @@ class TokenizePlus(Step):
         corresponds to the original i-th token.
         This function inserts special tokens.
         """
-        tokens, offsets = self._intra_word_tokenize(string_tokens, tokenizer)
+        tokens, offsets = self._intra_word_tokenize(string_tokens, tokenizer, max_wordpieces - 2)
         tokens = [tokenizer.cls_token_id] + tokens + [tokenizer.sep_token_id]
         offsets = self._increment_offsets(offsets, 1)
         return tokens, offsets
@@ -216,7 +197,7 @@ class TokenizePlus(Step):
         sentences = split[token_column]
         output = []
         for sentence in sentences:
-            wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer)
+            wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer, max_length)
             # Sometimes the tokenizer isn't able to produce anything
             token_spans = [(0, 0)] + token_spans + [(token_spans[-1][1] + 1,) * 2]
             assert len(token_spans) == len(sentence) + 2
