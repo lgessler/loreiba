@@ -679,7 +679,7 @@ def _train(
                         if math.isnan(metric):
                             print(val_step, file=sys.stderr)
                             print(
-                                {k: v.tolist() if isinstance(v, torch.Tensor) else v for k, v in val_batch},
+                                {k: v.tolist() if isinstance(v, torch.Tensor) else v for k, v in val_batch.items()},
                                 file=sys.stderr,
                             )
                             raise ValueError("NaN valiation metric encountered")
