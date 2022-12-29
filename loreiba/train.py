@@ -678,7 +678,10 @@ def _train(
                         metric = metric if isinstance(metric, float) else metric.item()
                         if math.isnan(metric):
                             print(val_step, file=sys.stderr)
-                            print(val_batch, file=sys.stderr)
+                            print(
+                                {k: v.tolist() if isinstance(v, torch.Tensor) else v for k, v in val_batch},
+                                file=sys.stderr,
+                            )
                             raise ValueError("NaN valiation metric encountered")
 
                         if config.auto_aggregate_val_metric:
