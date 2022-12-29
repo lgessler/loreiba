@@ -11,7 +11,7 @@ from tango.integrations.transformers import Tokenizer
 from torch.nn import CrossEntropyLoss
 from transformers import AutoModel, BertConfig, BertModel
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
-from transformers.models.bert.modeling_bert import BertLMPredictionHead
+from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 from loreiba.sgcl.phrases.loss import phrase_guided_loss
@@ -62,7 +62,8 @@ class SGCLModel(Model):
         else:
             logger.info(f"Initializing a new BERT model with config {config}")
             self.encoder = BertModel(config=config, add_pooling_layer=False)
-        self.lm_head = BertLMPredictionHead(config=config)
+        # Use roberta LM head implementation instead
+        self.lm_head = RobertaLMHead(config=config)
         self.pad_id = tokenizer.pad_token_id
         self.tree_sgcl_config = tree_sgcl_config
         self.phrase_sgcl_config = phrase_sgcl_config
