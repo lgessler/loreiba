@@ -2,6 +2,7 @@ import logging
 import math
 import os
 import shutil
+import sys
 from itertools import islice
 from typing import Any, Dict, List, Optional, Set, Union, cast
 
@@ -676,6 +677,8 @@ def _train(
                         metric = outputs[config.val_metric_name]
                         metric = metric if isinstance(metric, float) else metric.item()
                         if math.isnan(metric):
+                            print(val_step, file=sys.stderr)
+                            print(val_batch, file=sys.stderr)
                             raise ValueError("NaN valiation metric encountered")
 
                         if config.auto_aggregate_val_metric:
