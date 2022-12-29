@@ -674,12 +674,15 @@ def _train(
                         for callback in callbacks:
                             callback.post_val_batch(step, val_step, current_epoch, outputs)
                         metric = outputs[config.val_metric_name]
+                        metric = metric if isinstance(metric, float) else metric.item()
+                        if math.isnan(metric):
+                            raise ValueError("NaN valiation metric encountered")
 
                         if config.auto_aggregate_val_metric:
-                            running_metric += metric if isinstance(metric, float) else metric.item()
+                            running_metric += metric
                             val_metric = running_metric / (val_step + 1)
                         else:
-                            val_metric = metric if isinstance(metric, float) else metric.item()
+                            val_metric = metric
 
                         # Average metric across all workers.
                         if (
