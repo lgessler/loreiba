@@ -163,10 +163,10 @@ class TokenizePlus(Step):
 
             if len(wp_ids) > 0:
                 tokens.extend(wp_ids)
-                offsets.append((len(tokens), len(tokens) + len(wp_ids) - 1))
+                offsets.append((len(tokens) - len(wp_ids), len(tokens) - 1))
             else:
                 tokens.append(tokenizer.unk_token_id)
-                offsets.append((len(tokens), len(tokens)))
+                offsets.append((len(tokens) - 1, len(tokens) - 1))
         return tokens, offsets
 
     @staticmethod
