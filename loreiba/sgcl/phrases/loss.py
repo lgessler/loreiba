@@ -205,8 +205,7 @@ def phrase_guided_loss(
     # dill_dump(config, "/tmp/config")
     # dill_dump(attentions, "/tmp/attentions")
     # dill_dump(attention_mask, "/tmp/attention_mask")
-    # dill_dump(token_spans, "/tmp/token_spans")
-    # dill_dump(head, "/tmp/head")
+    # dill_dump(phrase_sets, "/tmp/phrase_sets")
 
     attentions = torch.stack(attentions, dim=0)
     # average across heads
@@ -219,5 +218,4 @@ def tmp():
     config = dill_load("/tmp/config")
     attentions = dill_load("/tmp/attentions")
     attention_mask = dill_load("/tmp/attention_mask")
-    head = dill_load("/tmp/head")
-    token_spans = dill_load("/tmp/token_spans")
+    phrase_sets_for_batch = dill_load("/tmp/phrase_sets")
