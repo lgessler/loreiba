@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 import torch
 
+from loreiba.common import dill_dump, dill_load
 from loreiba.sgcl.generation_common import get_all_subtrees, get_head_map
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 
@@ -69,10 +70,18 @@ def compute_phrase_set(
 def generate_phrase_sets(
     config: PhraseSgclConfig, head: torch.LongTensor, token_spans: torch.Tensor
 ) -> List[List[Dict[str, Any]]]:
+    # dill_dump(head, '/tmp/head')
+    # dill_dump(token_spans, '/tmp/token_spans')
     head_maps = get_head_map(head)
     token_to_head_wordpiece_maps = [get_token_to_head_wordpiece_map(spans) for spans in token_spans]
     subtrees = [get_all_subtrees(head_map) for head_map in head_maps]
-    return [
+    phrase_sets = [
         compute_phrase_set(config, head_maps[i], subtrees[i], token_to_head_wordpiece_maps[i])
         for i in range(len(subtrees))
     ]
+    return phrase_sets
+
+
+def tmp():
+    head = dill_load("/tmp/head")
+    token_spans = dill_load("/tmp/token_spans")
