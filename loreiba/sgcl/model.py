@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+import psutil
 import torch
 import torch.nn as nn
 from _socket import gethostname
@@ -111,25 +112,22 @@ class SGCLModel(Model):
             mlm_loss = self._mlm_loss(mlm_preds, labels)
             loss = mlm_loss
             outputs["mlm_loss"] = mlm_loss
+            perplexity = mlm_loss.exp()
+            outputs["progress_items"] = {
+                "max_cuda_mb": torch.cuda.max_memory_allocated() / 1024**2,
+                "resident_memory_mb": psutil.Process().memory_info().rss / 1024**2,
+                "mlm_loss": mlm_loss.item(),
+                "perplexity": perplexity.item(),
+            }
             if self.training and self.tree_sgcl_config is not None:
                 tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, tree_sets)
                 loss += tree_loss
-                print(f" tree_loss: {tree_loss:0.4f}", end="")
-                log_metric("tree", tree_loss)
-                outputs["tree_loss"] = tree_loss
+                outputs["progress_items"]["tree_loss"] = tree_loss.item()
             if self.training and self.phrase_sgcl_config is not None:
                 phrase_loss = phrase_guided_loss(self.phrase_sgcl_config, attentions, attention_mask, phrase_sets)
                 loss += phrase_loss
-                print(f" phrase_loss: {phrase_loss:0.4f}", end="")
-                log_metric("phrase", phrase_loss)
-                outputs["phrase_loss"] = phrase_loss
+                outputs["progress_items"]["phrase_loss"] = phrase_loss.item()
 
-            perplexity = mlm_loss.exp()
-            print(f" perplexity: {perplexity:0.4f}", end="")
-            log_metric("perplexity", perplexity)
-            outputs["perplexity"] = perplexity
-
-            print(end="\r")
             outputs["loss"] = loss
             return outputs
         else:
