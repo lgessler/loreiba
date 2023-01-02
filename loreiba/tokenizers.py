@@ -102,7 +102,7 @@ def train_tokenizer(
 def train_bert_tokenizer(
     sentences: List[str],
     serialize_path: str,
-    vocab_size: int = 6000,
+    vocab_size: int = 10_000,
     tokenization_type: Literal["bpe", "wordpiece"] = "wordpiece",
 ) -> BertWordPieceTokenizer:
     tokenizer = BertWordPieceTokenizer(

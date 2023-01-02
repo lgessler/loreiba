@@ -21,7 +21,7 @@ from tango.integrations.datasets import DatasetsFormat
 from tango.integrations.transformers import Tokenizer
 from transformers import DataCollatorForLanguageModeling
 
-from loreiba.tokenizers import simple_train_tokenizer
+from loreiba.tokenizers import simple_train_tokenizer, train_tokenizer
 
 
 def ncycles(iterable, n):
@@ -245,7 +245,8 @@ class TrainTokenizer(Step):
         if os.path.exists(model_path):
             self.logger.info(f"Already found model at {model_path}. Removing...")
             shutil.rmtree(model_path)
-        simple_train_tokenizer(sentences, model_path)
+        train_tokenizer([" ".join(s) for s in sentences], model_path)
+        # simple_train_tokenizer(sentences, model_path)
         self.logger.info(f"Wrote tokenizer to {model_path}")
 
 
