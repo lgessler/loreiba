@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 from itertools import islice
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union, cast
 
 import more_itertools
@@ -29,6 +30,7 @@ from tango.integrations.torch.util import check_dataloader, check_dataset, set_s
 from tango.step import Step, StepResources
 from tango.workspace import Workspace
 from torch.utils.data import DistributedSampler
+from torch.utils.tensorboard import SummaryWriter
 
 
 @Step.register("loreiba.train::train")
@@ -361,6 +363,10 @@ def _train(
         model=model,
     )
 
+    writer = SummaryWriter(str(config.work_dir / "tensorboard"))
+    writer.add_text("language", os.environ["LANGUAGE"])
+    writer.add_text("name", os.environ["NAME"])
+
     # Check working directory to see if we should recover from a previous run.
     initial_state: Optional[Dict[str, Any]] = None
     if config.state_path.exists():
@@ -560,12 +566,6 @@ def _train(
     train_batch_iterator = more_itertools.peekable(train_batch_iterator_tqdm)
     try:
         for step, (epoch, batch) in train_batch_iterator:
-            if gethostname() == "avi":
-                with open(os.path.join(config.work_dir, "cuda"), "a") as f:
-                    f.write(f"{torch.cuda.max_memory_allocated()},")
-                with open(os.path.join(config.work_dir, "cpu"), "a") as f:
-                    resident_memory = psutil.Process().memory_info().rss / 1024**2
-                    f.write(f"{resident_memory},")
             if epoch != current_epoch:
                 # Start of new epoch.
                 if epoch > 0:
@@ -635,6 +635,11 @@ def _train(
                 dist.all_reduce(batch_loss_tensor)
                 batch_loss = batch_loss_tensor.detach().item() / config.world_size
 
+            if "progress_items" in batch_outputs[0]:
+                for bo in batch_outputs:
+                    for k, v in bo["progress_items"].items():
+                        writer.add_scalar(f"Train/{k}", torch.tensor(v, dtype=torch.float), global_step=step)
+                    writer.add_scalar(f"Train/loss", bo["loss"], global_step=step)
             if config.should_log_this_step(step):
                 # Callbacks.
                 for callback in callbacks:
@@ -642,6 +647,9 @@ def _train(
 
                 # Update progress bar.
                 metrics_to_log: Dict[str, float] = {"batch_loss": batch_loss}
+                if "progress_items" in batch_outputs[0]:
+                    metrics_to_log.update({k: f"{v:0.2f}" for k, v in batch_outputs[0]["progress_items"].items()})
+
                 if val_metric is not None:
                     metrics_to_log[f"val_{config.val_metric_name}"] = val_metric
                 if best_val_metric is not None:
@@ -701,8 +709,20 @@ def _train(
                             val_metric = val_metric_tensor.item() / config.world_size
 
                         # Update progress bar.
+                        if "progress_items" in batch_outputs[0]:
+                            for bo in batch_outputs:
+                                for k, v in bo["progress_items"].items():
+                                    writer.add_scalar(
+                                        f"Val/{k}", torch.tensor(v, dtype=torch.float), global_step=step + val_step
+                                    )
+                                writer.add_scalar(f"Val/loss", bo["loss"], global_step=step + val_step)
                         if config.is_local_main_process and config.should_log_this_val_step(val_step):
-                            val_batch_iterator.set_postfix(**{config.val_metric_name: val_metric})
+                            metrics_to_log = {config.val_metric_name: val_metric}
+                            if "progress_items" in batch_outputs[0]:
+                                metrics_to_log.update(
+                                    {k: f"{v:0.2f}" for k, v in batch_outputs[0]["progress_items"].items()}
+                                )
+                            val_batch_iterator.set_postfix(**metrics_to_log)
 
                         # Clean up.
                         del val_batch
