@@ -3,6 +3,8 @@
 // --------------------------------------------------------------------------------
 local language = std.extVar("LANGUAGE");
 local experiment_name = std.extVar("NAME");
+local use_phrase = std.extVar("PHRASE");
+local use_tree = std.extVar("TREE");
 local language_code_index = {
     "coptic": "cop",
     "greek": "grc",
@@ -46,20 +48,24 @@ local bert_config = {
 };
 local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
-local tree_sgcl_config = {
+local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
     subtree_sampling_method: {type: "random", max_number: 3},
     max_negative_per_subtree: 10
 };
-local phrase_sgcl_config = {
+local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
     max_subtrees_per_sentence: 5,
 };
 local model = {
     type: "loreiba.sgcl.model::sgcl_model",
-    bert_config: bert_config,
     tokenizer: tokenizer,
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
+    encoder: {
+        type: "bert",
+        tokenizer: tokenizer,
+        bert_config: bert_config,
+    }
 };
 
 // --------------------------------------------------------------------------------
