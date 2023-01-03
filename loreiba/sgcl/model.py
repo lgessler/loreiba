@@ -6,6 +6,7 @@ import psutil
 import torch
 import torch.nn as nn
 from _socket import gethostname
+from tango.common import Registrable
 from tango.common.exceptions import ConfigurationError
 from tango.integrations.torch import Model, TrainCallback
 from tango.integrations.transformers import Tokenizer
@@ -22,6 +23,38 @@ from loreiba.sgcl.trees.loss import syntax_tree_guided_loss
 logger = logging.getLogger(__name__)
 
 
+class SgclEncoder(torch.nn.Module, Registrable):
+    pass
+
+
+@SgclEncoder.register("bert")
+class BertEncoder(SgclEncoder):
+    def __init__(self, tokenizer: Tokenizer, bert_config: Dict[str, Any]):
+        super().__init__()
+        self.pad_id = tokenizer.pad_token_id
+        config = BertConfig(
+            **bert_config, vocab_size=len(tokenizer.get_vocab()), position_embedding_type="relative_key_query"
+        )
+        logger.info(f"Initializing a new BERT model with config {config}")
+        self.config = config
+        self.encoder = BertModel(config=config, add_pooling_layer=False)
+        self.tokenizer = tokenizer
+
+    def forward(self, *args, **kwargs):
+        return self.encoder(*args, **kwargs)
+
+    def compute_loss(self, preds, labels):
+        if not (labels != -100).any():
+            return 0.0
+        loss_fct = CrossEntropyLoss(ignore_index=-100)
+        masked_lm_loss = loss_fct(preds.view(-1, self.config.vocab_size), labels.view(-1))
+        return masked_lm_loss
+
+    @classmethod
+    def construct_head(cls, encoder):
+        return RobertaLMHead(config=encoder.config)
+
+
 @Model.register("loreiba.sgcl.model::sgcl_model")
 class SGCLModel(Model):
     """
@@ -31,11 +64,9 @@ class SGCLModel(Model):
 
     def __init__(
         self,
-        tokenizer: Tokenizer,
+        encoder: SgclEncoder,
         tree_sgcl_config: Optional[TreeSgclConfig] = None,
         phrase_sgcl_config: Optional[PhraseSgclConfig] = None,
-        pretrained_model_name_or_path: Optional[str] = None,
-        bert_config: Dict[str, Any] = None,
         *args,
         **kwargs,
     ):
@@ -51,32 +82,12 @@ class SGCLModel(Model):
         """
         super().__init__()
 
-        if pretrained_model_name_or_path is None and bert_config is None:
-            raise ConfigurationError(f"Must provide either a pretrained model name or a BERT config.")
+        # a BERT-style Transformer encoder stack
+        self.encoder = encoder
+        self.head = encoder.__class__.construct_head(encoder)
 
-        config = BertConfig(
-            **bert_config, vocab_size=len(tokenizer.get_vocab()), position_embedding_type="relative_key_query"
-        )
-        if pretrained_model_name_or_path is not None:
-            logger.info(f"Initializing transformer stack from a pretrained model {pretrained_model_name_or_path}")
-            self.encoder = AutoModel.from_pretrained(pretrained_model_name_or_path)
-        else:
-            logger.info(f"Initializing a new BERT model with config {config}")
-            self.encoder = BertModel(config=config, add_pooling_layer=False)
-        # Use roberta LM head implementation instead
-        self.lm_head = RobertaLMHead(config=config)
-        self.pad_id = tokenizer.pad_token_id
         self.tree_sgcl_config = tree_sgcl_config
         self.phrase_sgcl_config = phrase_sgcl_config
-
-    def _mlm_loss(self, preds, labels):
-        if not (labels != -100).any():
-            return 0.0
-        loss_fct = CrossEntropyLoss(ignore_index=-100)
-        masked_lm_loss = loss_fct(preds.view(-1, self.encoder.config.vocab_size), labels.view(-1))
-        # if not self.training:
-        #     print(masked_lm_loss, (labels != -100).sum())
-        return masked_lm_loss
 
     def forward(
         self,
@@ -99,8 +110,7 @@ class SGCLModel(Model):
         )
         hidden_states = encoder_outputs.hidden_states[1:]
         attentions = encoder_outputs.attentions
-        x = encoder_outputs.last_hidden_state
-        mlm_preds = self.lm_head(x)
+        last_encoder_state = encoder_outputs.last_hidden_state
 
         def log_metric(fname, value):
             if gethostname() == "avi":
@@ -109,16 +119,18 @@ class SGCLModel(Model):
 
         if labels is not None:
             outputs = {}
-            mlm_loss = self._mlm_loss(mlm_preds, labels)
-            loss = mlm_loss
-            outputs["mlm_loss"] = mlm_loss
-            perplexity = mlm_loss.exp()
+            preds = self.head(last_encoder_state)
+            head_loss = self.encoder.compute_loss(preds, labels)
+            loss = head_loss
+            outputs["head_loss"] = head_loss
             outputs["progress_items"] = {
                 "max_cuda_mb": torch.cuda.max_memory_allocated() / 1024**2,
                 "resident_memory_mb": psutil.Process().memory_info().rss / 1024**2,
-                "mlm_loss": mlm_loss.item(),
-                "perplexity": perplexity.item(),
+                "head_loss": head_loss.item(),
             }
+            if isinstance(self.encoder, BertEncoder):
+                perplexity = head_loss.exp()
+                outputs["progress_items"]["perplexity"] = perplexity.item()
             if self.training and self.tree_sgcl_config is not None:
                 tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, tree_sets)
                 loss += tree_loss
