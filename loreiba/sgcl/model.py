@@ -92,7 +92,7 @@ class ElectraEncoder(SgclEncoder):
                 mlm_logits.view(-1, self.config.vocab_size), labels.view(-1), ignore_index=-100
             )
 
-        # Take predicted token IDs
+        # Take predicted token IDs. Note that argmax() breaks the gradient chain, so the generator only learns from MLM
         mlm_preds = mlm_logits.argmax(-1)
         # Combine them to get labels for discriminator
         replaced = (~input_ids.eq(mlm_preds)) & (labels != -100)
@@ -122,7 +122,7 @@ class ElectraEncoder(SgclEncoder):
         # dill_dump(last_hidden_state, '/tmp/last_hidden_state')
         # dill_dump(labels, '/tmp/labels')
         # dill_dump(self, '/tmp/self')
-        return {"rtd": (2 * rtd_loss), "mlm": masked_lm_loss}
+        return {"rtd": (100 * rtd_loss), "mlm": masked_lm_loss}
 
 
 def tmp():
