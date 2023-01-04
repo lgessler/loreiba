@@ -21,14 +21,14 @@ local static_masking = false;
 
 // For non-pretrained
 local FROM_PRETRAINED = false;
-local bert_config = {
+local electra_config = {
     hidden_size: 128,
     num_hidden_layers: 3,
-    num_attention_heads: 8,
+    num_attention_heads: 4,
     intermediate_size: 512,
     max_position_embeddings: max_length,
 };
-local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
+local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(electra_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
     subtree_sampling_method: {type: "random", max_number: 3},
@@ -44,9 +44,9 @@ local model = {
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
     encoder: {
-        type: "bert",
+        type: "electra",
         tokenizer: tokenizer,
-        bert_config: bert_config,
+        electra_config: electra_config,
     }
 };
 
@@ -77,7 +77,7 @@ local training_engine = {
     optimizer: {
         type: "torch::AdamW",
         lr: 3e-3,
-        betas: [0.9, 0.98],
+        betas: [0.9, 0.999],
         eps: 1e-6,
         weight_decay: 0.01
     },
@@ -96,7 +96,7 @@ local collate_fn = {
     tree_config: tree_sgcl_config,
     phrase_config: phrase_sgcl_config,
     // whether to replace [MASK] with 10% UNK and 10% random. should be true for electra, false for bert
-    mask_only: false,
+    mask_only: true,
 };
 local train_dataloader = {
     shuffle: true,
