@@ -105,6 +105,7 @@ local train_dataloader = {
     pin_memory: true,
     num_workers: 4,
     prefetch_factor: 4,
+    persistent_workers: true,
 };
 local val_dataloader = {
     shuffle: false,
@@ -113,6 +114,7 @@ local val_dataloader = {
     pin_memory: true,
     num_workers: 4,
     prefetch_factor: 4,
+    persistent_workers: true,
 };
 
 {
