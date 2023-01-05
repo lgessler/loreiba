@@ -235,6 +235,7 @@ class WriteModelCallback(TrainCallback):
     def post_train_loop(self, step: int, epoch: int) -> None:
         model = self.model
         if self.model_attr:
-            model = getattr(model, self.model_attr)
+            for piece in self.model_attr.split("."):
+                model = getattr(model, piece)
         model.save_pretrained(self.path)
         self.logger.info(f"Wrote model to {self.path}")
