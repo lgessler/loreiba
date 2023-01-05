@@ -93,7 +93,10 @@ class SgclDataCollator(DataCollator):
                 else:
                     _, labels = torch_mask_tokens(output[k], self.tokenizer)
                 while (labels == -100).all():
-                    _, labels = self.mlm_collator.torch_mask_tokens(output[k])
+                    if not self.mask_only:
+                        _, labels = self.mlm_collator.torch_mask_tokens(output[k])
+                    else:
+                        _, labels = torch_mask_tokens(output[k], self.tokenizer)
                 output["labels"] = labels
 
         if self.tree_config is not None:
