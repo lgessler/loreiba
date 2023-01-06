@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import psutil
@@ -233,9 +234,16 @@ class WriteModelCallback(TrainCallback):
         self.model_attr = model_attr
 
     def post_train_loop(self, step: int, epoch: int) -> None:
-        model = self.model
+        # Load the best model which might not be the last
+        state = torch.load(self.train_config.best_state_path / Path("worker0_model.pt"), map_location="cpu")
+        model = self.model.cpu()
+        model.load_state_dict(state, strict=True)
+
+        # Get the target attr
         if self.model_attr:
             for piece in self.model_attr.split("."):
                 model = getattr(model, piece)
+
+        # Save in the HuggingFace format
         model.save_pretrained(self.path)
         self.logger.info(f"Wrote model to {self.path}")
