@@ -587,6 +587,7 @@ def _train(
                     micro_batch, micro_batch_idx, len(batch)
                 )
                 if torch.isnan(micro_batch_loss):
+                    print(micro_batch_outputs, file=sys.stderr)
                     raise ValueError("nan loss encountered")
                 batch_loss += micro_batch_loss.detach().item()
                 batch_outputs.append(
