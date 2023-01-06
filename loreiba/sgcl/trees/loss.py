@@ -25,7 +25,6 @@ def _pack_trees_into_index_tensors(
     negative_lists = defaultdict(list)
 
     # Track these quantities, because they will be needed to determine the dimensions of the padded tensors
-
     all_negative_ids = [
         [k for k in negative.keys()]
         for tree_sets in tree_sets_for_batch
@@ -83,7 +82,7 @@ def _pack_trees_into_index_tensors(
     )
 
     # fill the packed tensors
-    for i in range(len(root_ids)):
+    for i in range(len(tree_sets_for_batch)):
         n = len(root_ids[i])
         if n == 0:
             continue
