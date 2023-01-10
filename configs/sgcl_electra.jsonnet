@@ -171,7 +171,7 @@ local val_dataloader = {
             checkpoint_every: validate_every,
             validation_split: "dev",
             validation_dataloader: val_dataloader,
-            val_metric_name: "mlm_loss",
+            val_metric_name: "loss",
             minimize_val_metric: true,
             callbacks: [
                 {"type": "loreiba.model::write_model", path: model_path, model_attr: "encoder.encoder"}

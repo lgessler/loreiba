@@ -1,5 +1,6 @@
 import logging
 import os
+from copy import copy
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -77,7 +78,9 @@ class ElectraEncoder(SgclEncoder):
         # the model we want to save will be available under that attribute.
         self.discriminator = ElectraModel(config=config)
         self.encoder = self.discriminator
-        self.discriminator_head = ElectraDiscriminatorPredictions(config=config)
+        discriminator_head_config = copy(config)
+        discriminator_head_config.hidden_act = "sigmoid"
+        self.discriminator_head = ElectraDiscriminatorPredictions(config=discriminator_head_config)
 
         # Make the generator--this is the same as the discriminator if we're tying them, otherwise
         # an identical copy of the ElectraModel. These are two approaches attempted in the original
@@ -135,7 +138,7 @@ class ElectraEncoder(SgclEncoder):
         # dill_dump(last_hidden_state, '/tmp/last_hidden_state')
         # dill_dump(labels, '/tmp/labels')
         # dill_dump(self, '/tmp/self')
-        return {"rtd": (100 * rtd_loss), "mlm": masked_lm_loss}
+        return {"rtd": (50 * rtd_loss), "mlm": masked_lm_loss}
 
 
 def tmp():
