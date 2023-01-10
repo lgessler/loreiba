@@ -12,9 +12,11 @@ from tango.common import Registrable
 from tango.common.exceptions import ConfigurationError
 from tango.integrations.torch import Model, TrainCallback
 from tango.integrations.transformers import Tokenizer
+from torch import nn
 from transformers import AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel
+from transformers.activations import get_activation
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
-from transformers.models.electra.modeling_electra import ElectraDiscriminatorPredictions
+from transformers.models.electra.modeling_electra import ElectraDiscriminatorPredictions, ElectraGeneratorPredictions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
 from loreiba.common import dill_dump, dill_load
@@ -55,6 +57,23 @@ class BertEncoder(SgclEncoder):
         return {"mlm": masked_lm_loss}
 
 
+class TiedElectraGeneratorPredictions(nn.Module):
+    """Like ElectraGeneratorPredictions, but accepts a torch.nn.Parameter from an embedding module"""
+
+    def __init__(self, config, embedding_weights):
+        super().__init__()
+
+        self.LayerNorm = nn.LayerNorm(config.vocab_size, eps=config.layer_norm_eps)
+        self.embedding_weights = embedding_weights
+
+    def forward(self, generator_hidden_states):
+        hidden_states = torch.einsum("bsh,eh->bse", generator_hidden_states, self.embedding_weights)
+        hidden_states = get_activation("gelu")(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states)
+
+        return hidden_states
+
+
 @SgclEncoder.register("electra")
 class ElectraEncoder(SgclEncoder):
     """
@@ -89,8 +108,8 @@ class ElectraEncoder(SgclEncoder):
         else:
             self.generator = ElectraModel(config=config)
             self.generator.embeddings = self.discriminator.embeddings
-        # Just use the Roberta head
-        self.generator_head = RobertaLMHead(config=config)
+        # Also tie the output embeddings to the input embeddings
+        self.generator_head = TiedElectraGeneratorPredictions(config, self.generator.embeddings.word_embeddings.weight)
 
     def forward(self, *args, **kwargs):
         return self.generator(*args, **kwargs)
@@ -119,7 +138,7 @@ class ElectraEncoder(SgclEncoder):
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
         )
-        discriminator_output = self.discriminator_head(second_encoder_output.last_hidden_state)
+        discriminator_output = self.discriminator_head(second_encoder_output.last_hidden_state).squeeze(-1)
 
         # compute replaced token detection BCE loss on eligible tokens (all non-special tokens)
         bce_mask = (
