@@ -267,14 +267,16 @@ class SGCLModel(Model):
 
 @TrainCallback.register("loreiba.model::write_model")
 class WriteModelCallback(TrainCallback):
-    def __init__(self, path: str, model_attr: Optional[str] = None, *args, **kwargs):
+    def __init__(self, path: str, model_attr: Optional[str] = None, use_best: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.path = path
         self.model_attr = model_attr
+        self.use_best = use_best
 
     def post_train_loop(self, step: int, epoch: int) -> None:
-        # Load the best model which might not be the last
-        state = torch.load(self.train_config.best_state_path / Path("worker0_model.pt"), map_location="cpu")
+        # Always use the last state path
+        state_path = self.train_config.state_path if not self.use_best else self.train_config.best_state_path
+        state = torch.load(state_path / Path("worker0_model.pt"), map_location="cpu")
         model = self.model.cpu()
         model.load_state_dict(state, strict=True)
 
