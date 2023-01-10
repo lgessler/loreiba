@@ -83,13 +83,14 @@ class ElectraEncoder(SgclEncoder):
         self.discriminator_head = ElectraDiscriminatorPredictions(config=discriminator_head_config)
 
         # Make the generator--this is the same as the discriminator if we're tying them, otherwise
-        # an identical copy of the ElectraModel. These are two approaches attempted in the original
-        # ELECTRA paper. Not implemented here: tying only the input embedding weights, allowing a
-        # distinct but smaller (instead of identical) ELECTRA model.
+        # an identical copy of the ElectraModel and tie their embedding layers. These are two approaches
+        # described in the original ELECTRA paper. Not implemented here: allowing a distinct but smaller
+        # (instead of identical) ELECTRA model.
         if tied_generator:
             self.generator = self.discriminator
         else:
             self.generator = ElectraModel(config=config)
+            self.generator.embeddings = self.discriminator.embeddings
         # Just use the Roberta head
         self.generator_head = RobertaLMHead(config=config)
 
