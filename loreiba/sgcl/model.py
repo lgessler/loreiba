@@ -14,7 +14,7 @@ from tango.integrations.torch import Model, TrainCallback
 from tango.integrations.transformers import Tokenizer
 from torch import nn
 from transformers import AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel
-from transformers.activations import GELUActivation, get_activation
+from transformers.activations import GELUActivation, gelu, get_activation
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.electra.modeling_electra import ElectraDiscriminatorPredictions, ElectraGeneratorPredictions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
@@ -32,6 +32,32 @@ class SgclEncoder(torch.nn.Module, Registrable):
     pass
 
 
+@torch.jit.script
+def _tied_generator_forward(hidden_states, embedding_weights):
+    hidden_states = torch.einsum("bsh,eh->bse", hidden_states, embedding_weights)
+    return hidden_states
+
+
+class TiedRobertaLMHead(nn.Module):
+    """Version of RobertaLMHead which accepts an embedding torch.nn.Parameter for output probabilities"""
+
+    def __init__(self, config, embedding_weights):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.embedding_weights = embedding_weights
+
+    def forward(self, features, **kwargs):
+        x = self.dense(features)
+        x = gelu(x)
+        x = self.layer_norm(x)
+
+        # project back to size of vocabulary with bias
+        x = _tied_generator_forward(x, self.embedding_weights)
+
+        return x
+
+
 @SgclEncoder.register("bert")
 class BertEncoder(SgclEncoder):
     def __init__(self, tokenizer: Tokenizer, bert_config: Dict[str, Any]):
@@ -44,7 +70,7 @@ class BertEncoder(SgclEncoder):
         self.config = config
         self.encoder = BertModel(config=config, add_pooling_layer=False)
         self.tokenizer = tokenizer
-        self.head = RobertaLMHead(config=config)
+        self.head = TiedRobertaLMHead(config, self.encoder.embeddings.word_embeddings.weight)
 
     def forward(self, *args, **kwargs):
         return self.encoder(*args, **kwargs)
@@ -55,12 +81,6 @@ class BertEncoder(SgclEncoder):
             return 0.0
         masked_lm_loss = F.cross_entropy(preds.view(-1, self.config.vocab_size), labels.view(-1), ignore_index=-100)
         return {"mlm": masked_lm_loss}
-
-
-@torch.jit.script
-def _tied_generator_forward(hidden_states, embedding_weights):
-    hidden_states = torch.einsum("bsh,eh->bse", hidden_states, embedding_weights)
-    return hidden_states
 
 
 class TiedElectraGeneratorPredictions(nn.Module):
