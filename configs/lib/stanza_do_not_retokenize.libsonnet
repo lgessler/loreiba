@@ -1,1 +1,1 @@
-["coptic"]
+["coptic", "english"]

@@ -38,6 +38,7 @@ class ReadTextOnlyConllu(Step):
 
     PATH_MAP = {
         "coptic": "data/coptic/converted",
+        "english": "data/english/converted",
         "greek": "data/greek/converted",
         "indonesian": "data/indonesian/converted_punct",
         "maltese": "data/maltese/converted_punct",
@@ -259,6 +260,7 @@ class ReadUDTreebank(Step):
 
     REPO_MAP = {
         "coptic": "UD_Coptic-Scriptorium",
+        "english": "UD_English-GUM",
         "greek": "UD_Ancient_Greek-PROIEL",
         "indonesian": "UD_Indonesian-GSD",
         "maltese": "UD_Maltese-MUDT",
