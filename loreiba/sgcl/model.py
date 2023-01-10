@@ -14,7 +14,7 @@ from tango.integrations.torch import Model, TrainCallback
 from tango.integrations.transformers import Tokenizer
 from torch import nn
 from transformers import AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel
-from transformers.activations import get_activation
+from transformers.activations import GELUActivation, get_activation
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 from transformers.models.electra.modeling_electra import ElectraDiscriminatorPredictions, ElectraGeneratorPredictions
 from transformers.models.roberta.modeling_roberta import RobertaLMHead
@@ -57,6 +57,12 @@ class BertEncoder(SgclEncoder):
         return {"mlm": masked_lm_loss}
 
 
+@torch.jit.script
+def _tied_generator_forward(hidden_states, embedding_weights):
+    hidden_states = torch.einsum("bsh,eh->bse", hidden_states, embedding_weights)
+    return hidden_states
+
+
 class TiedElectraGeneratorPredictions(nn.Module):
     """Like ElectraGeneratorPredictions, but accepts a torch.nn.Parameter from an embedding module"""
 
@@ -67,7 +73,7 @@ class TiedElectraGeneratorPredictions(nn.Module):
         self.embedding_weights = embedding_weights
 
     def forward(self, generator_hidden_states):
-        hidden_states = torch.einsum("bsh,eh->bse", generator_hidden_states, self.embedding_weights)
+        hidden_states = _tied_generator_forward(generator_hidden_states, self.embedding_weights)
         hidden_states = get_activation("gelu")(hidden_states)
         hidden_states = self.LayerNorm(hidden_states)
 
