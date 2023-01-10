@@ -77,7 +77,7 @@ local training_engine = {
     type: "torch",
     optimizer: {
         type: "torch::AdamW",
-        lr: 3e-3,
+        lr: 3e-4,
         betas: [0.9, 0.999],
         eps: 1e-6,
         weight_decay: 0.01
