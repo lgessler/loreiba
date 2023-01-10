@@ -63,7 +63,7 @@ class ElectraEncoder(SgclEncoder):
     heads on top for MLM and replaced token detection.
     """
 
-    def __init__(self, tokenizer: Tokenizer, electra_config: Dict[str, Any]):
+    def __init__(self, tokenizer: Tokenizer, electra_config: Dict[str, Any], tied_generator: bool = False):
         super().__init__()
         self.pad_id = tokenizer.pad_token_id
         config = ElectraConfig(
@@ -72,6 +72,10 @@ class ElectraEncoder(SgclEncoder):
         logger.info(f"Initializing a new BERT model with config {config}")
         self.config = config
         self.encoder = ElectraModel(config=config)
+        if tied_generator:
+            self.generator = self.encoder
+        else:
+            self.generator = ElectraModel(config=config)
         self.tokenizer = tokenizer
 
         # Just use the Roberta head
@@ -79,7 +83,7 @@ class ElectraEncoder(SgclEncoder):
         self.discriminator_head = ElectraDiscriminatorPredictions(config=config)
 
     def forward(self, *args, **kwargs):
-        return self.encoder(*args, **kwargs)
+        return self.generator(*args, **kwargs)
 
     def compute_loss(self, input_ids, attention_mask, token_type_ids, last_hidden_state, labels):
         """

@@ -47,6 +47,7 @@ local model = {
         type: "electra",
         tokenizer: tokenizer,
         electra_config: electra_config,
+        tied_generator: false,
     }
 };
 
