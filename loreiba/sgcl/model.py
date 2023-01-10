@@ -78,9 +78,7 @@ class ElectraEncoder(SgclEncoder):
         # the model we want to save will be available under that attribute.
         self.discriminator = ElectraModel(config=config)
         self.encoder = self.discriminator
-        discriminator_head_config = copy(config)
-        discriminator_head_config.hidden_act = "sigmoid"
-        self.discriminator_head = ElectraDiscriminatorPredictions(config=discriminator_head_config)
+        self.discriminator_head = torch.nn.Linear(config.hidden_size, 1)
 
         # Make the generator--this is the same as the discriminator if we're tying them, otherwise
         # an identical copy of the ElectraModel and tie their embedding layers. These are two approaches
