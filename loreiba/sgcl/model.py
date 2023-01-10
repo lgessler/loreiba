@@ -71,16 +71,24 @@ class ElectraEncoder(SgclEncoder):
         )
         logger.info(f"Initializing a new BERT model with config {config}")
         self.config = config
-        self.encoder = ElectraModel(config=config)
-        if tied_generator:
-            self.generator = self.encoder
-        else:
-            self.generator = ElectraModel(config=config)
         self.tokenizer = tokenizer
 
+        # Make the discriminator--alias this as "self.encoder" since WriteModelCallback assumes
+        # the model we want to save will be available under that attribute.
+        self.discriminator = ElectraModel(config=config)
+        self.encoder = self.discriminator
+        self.discriminator_head = ElectraDiscriminatorPredictions(config=config)
+
+        # Make the generator--this is the same as the discriminator if we're tying them, otherwise
+        # an identical copy of the ElectraModel. These are two approaches attempted in the original
+        # ELECTRA paper. Not implemented here: tying only the input embedding weights, allowing a
+        # distinct but smaller (instead of identical) ELECTRA model.
+        if tied_generator:
+            self.generator = self.discriminator
+        else:
+            self.generator = ElectraModel(config=config)
         # Just use the Roberta head
         self.generator_head = RobertaLMHead(config=config)
-        self.discriminator_head = ElectraDiscriminatorPredictions(config=config)
 
     def forward(self, *args, **kwargs):
         return self.generator(*args, **kwargs)
@@ -104,7 +112,7 @@ class ElectraEncoder(SgclEncoder):
 
         # Make inputs for discriminator, feed them into the encoder once more, then feed to discriminator head
         replaced_input_ids = torch.where(replaced, mlm_preds, input_ids)
-        second_encoder_output = self.encoder(
+        second_encoder_output = self.discriminator(
             input_ids=replaced_input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
