@@ -124,9 +124,9 @@ def assess_tree_sgcl_batched(
     tree_sets_for_batch: List[List[Dict[str, Any]]],
     hidden_states: List[torch.Tensor],
     token_spans: torch.LongTensor,
-) -> float:
+) -> torch.tensor:
     if len(tree_sets_for_batch) == 0 or all(len(s) == 0 for s in tree_sets_for_batch):
-        return 0.0
+        return torch.tensor(0.0, device=token_spans.device)
 
     device = hidden_states[0].device
     tokenwise_hidden_states = torch.stack([lc.pool_embeddings(layer_i, token_spans) for layer_i in hidden_states])
@@ -211,7 +211,7 @@ def syntax_tree_guided_loss(
     hidden_states: List[torch.Tensor],
     token_spans: torch.LongTensor,
     tree_sets: List[List[Dict[str, Any]]],
-) -> float:
+) -> torch.tensor:
     """
     Compute the tree-guided contrastive loss presented in Zhang et al. 2022
     (https://aclanthology.org/2022.findings-acl.191.pdf).

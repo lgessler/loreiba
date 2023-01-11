@@ -137,9 +137,9 @@ def compute_phrase_loss_batched(
     averaged_attentions: torch.FloatTensor,
     attention_mask: torch.Tensor,
     phrase_sets_for_batch: List[List[Dict[str, Any]]],
-) -> float:
+) -> torch.Tensor:
     if all(len(s) == 0 for s in phrase_sets_for_batch):
-        return 0.0
+        return torch.tensor(0.0, device=averaged_attentions.device)
 
     packed = _pack_phrases_into_tensors(config, phrase_sets_for_batch, averaged_attentions.device)
     query_indexes = packed["query_indexes"]
@@ -201,7 +201,7 @@ def phrase_guided_loss(
     attentions: List[torch.Tensor],
     attention_mask: torch.Tensor,
     phrase_sets: List[List[Dict[str, Any]]],
-) -> float:
+) -> torch.tensor:
     # dill_dump(config, "/tmp/config")
     # dill_dump(attentions, "/tmp/attentions")
     # dill_dump(attention_mask, "/tmp/attention_mask")
