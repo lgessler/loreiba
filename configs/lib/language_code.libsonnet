@@ -1,7 +1,7 @@
 // https://www.loc.gov/standards/iso639-2/php/English_list.php
 {
     "coptic": "cop",
-    "english": "eng",
+    "english": "en",
     "greek": "grc",
     "indonesian": "id",
     "maltese": "mt",
