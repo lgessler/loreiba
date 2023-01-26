@@ -250,11 +250,6 @@ class SGCLModel(Model):
         attentions = encoder_outputs.attentions
         last_encoder_state = encoder_outputs.last_hidden_state
 
-        def log_metric(fname, value):
-            if gethostname() == "avi":
-                with open(f"/tmp/{fname}", "a") as f:
-                    f.write(f"{value},")
-
         if labels is not None:
             outputs = {}
             head_loss = self.encoder.compute_loss(input_ids, attention_mask, token_type_ids, last_encoder_state, labels)
