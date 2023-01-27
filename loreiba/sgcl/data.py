@@ -30,7 +30,7 @@ class Finalize(Step):
         static_masking: bool = True,
     ) -> DatasetDict:
         tokenizer = tokenizer.construct()
-        dataset = dataset.remove_columns(["tokens", "lemmas", "xpos", "upos"])
+        dataset = dataset.remove_columns(["tokens", "lemmas", "upos"])
         # It's OK to peek at test since UD deprels are a fixed set--this is just for convenience, not cheating
         deprels = sorted(
             list(
@@ -39,6 +39,8 @@ class Finalize(Step):
             )
         )
         self.logger.info(f"Using deprel set: {deprels}")
+        xpos = sorted(list(set(x for x in dataset["train"]["xpos"]) | set(x for x in dataset["dev"]["xpos"])))
+        self.logger.info(f"Using xpos set: {xpos}")
 
         features = datasets.Features(
             {
@@ -48,6 +50,7 @@ class Finalize(Step):
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "head": Sequence(feature=Value(dtype="int16", id=None), length=-1, id=None),
                 "deprel": Sequence(feature=ClassLabel(names=deprels, id=None), length=-1, id=None),
+                "xpos": Sequence(feature=ClassLabel(names=xpos, id=None), length=-1, id=None),
             }
         )
 
@@ -71,6 +74,7 @@ class Finalize(Step):
                         "token_spans": v["token_spans"],
                         "head": [int(i) for i in v["head"]],
                         "deprel": v["deprel"],
+                        "xpos": v["xpos"],
                     }
                     if static_masking:
                         _, labels = mlm_collator.torch_mask_tokens(torch.tensor([new_row["input_ids"]]))
