@@ -84,7 +84,7 @@ class SgclDataCollator(DataCollator):
                 batch_first=True,
                 padding_value=(0 if k != self.text_field else self.text_pad_id),
             )
-            if k == "token_spans":
+            if k in ["token_spans", "dependency_token_spans"]:
                 output[k] = output[k].view(output[k].shape[0], -1, 2)
 
             if not self.static_masking and k == self.text_field:
@@ -102,6 +102,8 @@ class SgclDataCollator(DataCollator):
         if self.tree_config is not None:
             output["tree_sets"] = generate_subtrees(self.tree_config, output["head"])
         if self.phrase_config is not None:
-            output["phrase_sets"] = generate_phrase_sets(self.phrase_config, output["head"], output["token_spans"])
+            output["phrase_sets"] = generate_phrase_sets(
+                self.phrase_config, output["head"], output["dependency_token_spans"]
+            )
 
         return output
