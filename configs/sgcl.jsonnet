@@ -120,31 +120,31 @@ local val_dataloader = {
 {
     steps: {
         raw_treebank_data: {
-            type: "loreiba.data::read_ud_treebank",
+            type: "loreiba.data.conllu::read_ud_treebank",
             shortcut: language,
             tag: "r2.11"  // Use UD treebanks from release 2.11
         },
         bare_text_data: {
-            type: "loreiba.data::read_text_only_conllu",
+            type: "loreiba.data.conllu::read_text_only_conllu",
             shortcut: language,
             stanza_retokenize: if std.member(stanza_do_not_retokenize, language) then false else true,
             stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
             stanza_language_code: language_code_index[language],
         },
         [if FROM_PRETRAINED then null else "tokenizer"]: {
-            type: "loreiba.data::train_tokenizer",
+            type: "loreiba.data.tokenize::train_tokenizer",
             dataset: { "type": "ref", "ref": "bare_text_data" },
             model_path: model_path
         },
         tokenized_text_data: {
-            type: "loreiba.data::tokenize_plus",
+            type: "loreiba.data.tokenize::tokenize_plus",
             dataset: { "type": "ref", "ref": "bare_text_data" },
             max_length: max_length,
             tokenizer: tokenizer,
             step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
         },
         parsed_text_data: {
-            type: "loreiba.data::stanza_parse_dataset",
+            type: "loreiba.data.stanza::stanza_parse_dataset",
             dataset: { "type": "ref", "ref": "tokenized_text_data" },
             language_code: language_code_index[language],
             allow_retokenization: false,  // we tokenized earlier
@@ -152,7 +152,7 @@ local val_dataloader = {
             batch_size: 128,
         },
         model_inputs: {
-            type: "loreiba.data::finalize",
+            type: "loreiba.sgcl.data::finalize",
             dataset: { "type": "ref", "ref": "parsed_text_data" },
             static_masking: static_masking,
             tokenizer: tokenizer,
