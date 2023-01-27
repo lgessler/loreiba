@@ -4,16 +4,15 @@ from copy import copy
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from torchmetrics import MatthewsCorrCoef, Accuracy
 import torch.nn.functional as F
 from tango.integrations.torch import Model
 from tango.integrations.transformers import Tokenizer
-from transformers import AutoModel, AutoConfig, AutoModelForSequenceClassification
+from torchmetrics import Accuracy, MatthewsCorrCoef
+from transformers import AutoConfig, AutoModel, AutoModelForSequenceClassification
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions, SequenceClassifierOutput
 from transformers.models.roberta.modeling_roberta import RobertaClassificationHead
 
 logger = logging.getLogger(__name__)
-
 
 
 @Model.register("loreiba.eval.cola.model::cola_model")
@@ -34,9 +33,9 @@ class ColaModel(Model):
         self.tokenizer = tokenizer
 
         if self.has_pooler:
-            self.accuracy = Accuracy(task='multiclass', num_classes=2, top_k=1)
+            self.accuracy = Accuracy(task="multiclass", num_classes=2, top_k=1)
         else:
-            self.accuracy = Accuracy(task='binary')
+            self.accuracy = Accuracy(task="binary")
         self.mcc = MatthewsCorrCoef(2)
 
     def forward(
@@ -50,8 +49,7 @@ class ColaModel(Model):
             logits = outputs.logits
         else:
             encoder_outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
-                input_ids=input_ids,
-                attention_mask=attention_mask
+                input_ids=input_ids, attention_mask=attention_mask
             )
             last_encoder_state = encoder_outputs.last_hidden_state
             logits = self.classifier(last_encoder_state).squeeze(-1)

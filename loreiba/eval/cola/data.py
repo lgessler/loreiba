@@ -1,4 +1,4 @@
-from typing import Iterable, List, Literal, Optional, Tuple, Dict, Any
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 import datasets
 import torch
@@ -19,16 +19,16 @@ class ReadCola(Step):
     def run(
         self,
         tokenizer: Tokenizer,
-        train_path: Optional[str] = 'data/cola_1_1_tokenized_train.tsv',
-        dev_path: Optional[str] = 'data/cola_1_1_tokenized_dev.tsv',
-        test_path: Optional[str] = 'data/cola_1_1_tokenized_test.tsv',
+        train_path: Optional[str] = "data/cola_1_1_tokenized_train.tsv",
+        dev_path: Optional[str] = "data/cola_1_1_tokenized_dev.tsv",
+        test_path: Optional[str] = "data/cola_1_1_tokenized_test.tsv",
     ) -> DatasetDict:
         def read_tsv(path):
             xs = []
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 for line in f:
-                    if '\t' in line:
-                        _, label, _, text = line.strip().split('\t')
+                    if "\t" in line:
+                        _, label, _, text = line.strip().split("\t")
                         tokenized = tokenizer.encode_plus(
                             text=text,
                             add_special_tokens=True,
@@ -36,11 +36,13 @@ class ReadCola(Step):
                             return_attention_mask=True,
                             return_token_type_ids=True,
                         )
-                        xs.append({
-                            "label": torch.tensor(int(label)),
-                            "input_ids": tokenized["input_ids"][0],
-                            "attention_mask": tokenized["attention_mask"][0],
-                        })
+                        xs.append(
+                            {
+                                "label": torch.tensor(int(label)),
+                                "input_ids": tokenized["input_ids"][0],
+                                "attention_mask": tokenized["attention_mask"][0],
+                            }
+                        )
             return xs
 
         features = datasets.Features(
