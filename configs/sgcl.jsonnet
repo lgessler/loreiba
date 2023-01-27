@@ -38,7 +38,7 @@ local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
     max_subtrees_per_sentence: 5,
 };
 local model = {
-    type: "loreiba.sgcl.model::sgcl_model",
+    type: "loreiba.sgcl.model.model::sgcl_model",
     tokenizer: tokenizer,
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,

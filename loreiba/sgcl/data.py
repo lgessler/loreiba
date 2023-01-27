@@ -39,7 +39,11 @@ class Finalize(Step):
             )
         )
         self.logger.info(f"Using deprel set: {deprels}")
-        xpos = sorted(list(set(x for x in dataset["train"]["xpos"]) | set(x for x in dataset["dev"]["xpos"])))
+        xpos = sorted(
+            list(
+                set(x for s in dataset["train"]["xpos"] for x in s) | set(x for s in dataset["dev"]["xpos"] for x in s)
+            )
+        )
         self.logger.info(f"Using xpos set: {xpos}")
 
         features = datasets.Features(

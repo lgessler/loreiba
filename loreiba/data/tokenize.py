@@ -18,6 +18,7 @@ class TokenizePlus(Step):
     Use a pretrained transformer tokenizer to get inputs necessary for the language model. Also,
     note which wordpieces belong to whole tokens in the original tokenization.
     """
+
     DETERMINISTIC = True
     CACHEABLE = True
     FORMAT = DatasetsFormat()
