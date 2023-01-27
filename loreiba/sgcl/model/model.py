@@ -2,25 +2,17 @@ import logging
 import os
 from copy import copy
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import psutil
 import torch
-import torch.nn.functional as F
-from _socket import gethostname
-from tango.common import Registrable
-from tango.common.exceptions import ConfigurationError
+from datasets import DatasetDict
 from tango.integrations.torch import Model, TrainCallback
-from tango.integrations.transformers import Tokenizer
-from torch import nn
-from transformers import AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel
-from transformers.activations import GELUActivation, gelu, get_activation
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
-from transformers.models.electra.modeling_electra import ElectraDiscriminatorPredictions, ElectraGeneratorPredictions
-from transformers.models.roberta.modeling_roberta import RobertaLMHead
 
 from loreiba.common import dill_dump, dill_load
 from loreiba.sgcl.model.encoder import SgclEncoder
+from loreiba.sgcl.model.xpos import XposHead
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 from loreiba.sgcl.phrases.loss import phrase_guided_loss
 from loreiba.sgcl.trees.common import TreeSgclConfig
@@ -29,9 +21,6 @@ from loreiba.sgcl.trees.loss import syntax_tree_guided_loss
 logger = logging.getLogger(__name__)
 
 
-################################################################################
-# Main model
-################################################################################
 @Model.register("loreiba.sgcl.model.model::sgcl_model")
 class SGCLModel(Model):
     """
@@ -42,8 +31,10 @@ class SGCLModel(Model):
     def __init__(
         self,
         encoder: SgclEncoder,
+        counts: Dict[str, int],
         tree_sgcl_config: Optional[TreeSgclConfig] = None,
         phrase_sgcl_config: Optional[PhraseSgclConfig] = None,
+        xpos_tagging: bool = True,
         *args,
         **kwargs,
     ):
@@ -58,9 +49,14 @@ class SGCLModel(Model):
             **kwargs:
         """
         super().__init__()
+        self.counts = counts
+        self.xpos_tagging = xpos_tagging
 
         # a BERT-style Transformer encoder stack
         self.encoder = encoder
+
+        if xpos_tagging:
+            self.xpos_head = XposHead(encoder.config.num_hidden_layers + 1, encoder.config.hidden_size, counts["xpos"])
 
         self.tree_sgcl_config = tree_sgcl_config
         self.phrase_sgcl_config = phrase_sgcl_config
@@ -71,6 +67,7 @@ class SGCLModel(Model):
         attention_mask,
         token_type_ids,
         token_spans,
+        dependency_token_spans,
         xpos,
         head,
         deprel,
@@ -90,22 +87,35 @@ class SGCLModel(Model):
         last_encoder_state = encoder_outputs.last_hidden_state
 
         if labels is not None:
-            outputs = {}
+            outputs = {
+                "progress_items": {
+                    "max_cuda_mb": torch.cuda.max_memory_allocated() / 1024**2,
+                    "resident_memory_mb": psutil.Process().memory_info().rss / 1024**2,
+                }
+            }
+
+            # MLM loss
             head_loss = self.encoder.compute_loss(input_ids, attention_mask, token_type_ids, last_encoder_state, labels)
             loss = sum(head_loss.values())
-
             outputs["mlm_loss"] = head_loss["mlm"]
-            outputs["progress_items"] = {
-                "max_cuda_mb": torch.cuda.max_memory_allocated() / 1024**2,
-                "resident_memory_mb": psutil.Process().memory_info().rss / 1024**2,
-                "mlm_loss": head_loss["mlm"].item(),
-                "perplexity": head_loss["mlm"].exp().item(),
-            }
+            outputs["progress_items"]["mlm_loss"] = head_loss["mlm"]
+            outputs["progress_items"]["perplexity"] = head_loss["mlm"].exp().item()
+
+            # XPOS loss
+            if self.xpos_tagging:
+                xpos_outputs = self.xpos_head(encoder_outputs.hidden_states, token_spans, xpos)
+                loss += xpos_outputs["loss"]
+                outputs["progress_items"]["xpos_acc"] = xpos_outputs["accuracy"].item()
+                outputs["progress_items"]["xpos_loss"] = xpos_outputs["loss"].item()
+
+            # Replaced token detection loss for electra (if using)
             if "rtd" in head_loss:
                 outputs["progress_items"]["rtd_loss"] = head_loss["rtd"].item()
 
             if self.training and self.tree_sgcl_config is not None:
-                tree_loss = syntax_tree_guided_loss(self.tree_sgcl_config, hidden_states, token_spans, tree_sets)
+                tree_loss = syntax_tree_guided_loss(
+                    self.tree_sgcl_config, hidden_states, dependency_token_spans, tree_sets
+                )
                 loss += tree_loss
                 outputs["progress_items"]["tree_loss"] = tree_loss.item()
             if self.training and self.phrase_sgcl_config is not None:

@@ -68,7 +68,7 @@ def extend_tree_with_subword_edges(output):
             seen.add(current)
             current = heads[current - 1]
 
-    output["token_spans"] = new_token_spans
+    output["dependency_token_spans"] = new_token_spans
 
 
 @Step.register("loreiba.data.stanza::stanza_parse_dataset")
@@ -90,6 +90,7 @@ class StanzaParseDataset(Step):
             "attention_mask": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+            "dependency_token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
         }
     )
 

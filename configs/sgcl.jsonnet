@@ -40,6 +40,7 @@ local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
     tokenizer: tokenizer,
+    counts: { "type": "ref", "ref": "counts" },
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
@@ -156,6 +157,11 @@ local val_dataloader = {
             dataset: { "type": "ref", "ref": "parsed_text_data" },
             static_masking: static_masking,
             tokenizer: tokenizer,
+        },
+        counts: {
+            type: "loreiba.data.util::count_unique_values",
+            dataset: { "type": "ref", "ref": "model_inputs" },
+            keys: ["xpos"],
         },
         trained_model: {
             type: "loreiba.train::train",
