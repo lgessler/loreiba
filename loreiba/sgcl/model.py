@@ -233,6 +233,7 @@ class SGCLModel(Model):
         attention_mask,
         token_type_ids,
         token_spans,
+        xpos,
         head,
         deprel,
         labels=None,
