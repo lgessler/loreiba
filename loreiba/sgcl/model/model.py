@@ -116,7 +116,7 @@ class SGCLModel(Model):
         attentions = encoder_outputs.attentions
         last_encoder_state = encoder_outputs.last_hidden_state
 
-        if self.parser is not None and (self.tree_sgcl_config is not None or self.phrase_sgcl_config is not None):
+        if self.parser is not None:
             # TODO: use predicted xpos?
             last_encoder_state_trimmed, token_spans_trimmed = _remove_cls_and_sep(last_encoder_state, token_spans)
             parser_output = self.parser.forward(
