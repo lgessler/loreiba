@@ -81,14 +81,15 @@ class TokenizePlus(Step):
     def _process_split(
         self, split: Dataset, tokenizer: Tokenizer, max_length: Optional[int], token_column: str
     ) -> Dataset:
-        sentences = split[token_column]
         output = []
-        for sentence in sentences:
+        for d in split:
+            sentence = d[token_column]
             wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer, max_length)
             flattened = []
             for pair in token_spans:
                 flattened.extend(pair)
             d = {
+                **d,
                 "input_ids": wp_ids,
                 "token_spans": flattened,
                 token_column: sentence[: len(token_spans) - 2],
@@ -99,6 +100,7 @@ class TokenizePlus(Step):
 
         features = datasets.Features(
             {
+                **split.features,
                 token_column: Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "input_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 "token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),

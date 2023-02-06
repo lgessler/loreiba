@@ -11,14 +11,34 @@ from tango.integrations.torch import Model, TrainCallback
 from transformers.modeling_outputs import BaseModelOutputWithPoolingAndCrossAttentions
 
 from loreiba.common import dill_dump, dill_load
+from loreiba.sgcl.model.biaffine_parser import BiaffineDependencyParser
 from loreiba.sgcl.model.encoder import SgclEncoder
 from loreiba.sgcl.model.xpos import XposHead
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
+from loreiba.sgcl.phrases.generation import generate_phrase_sets
 from loreiba.sgcl.phrases.loss import phrase_guided_loss
 from loreiba.sgcl.trees.common import TreeSgclConfig
+from loreiba.sgcl.trees.generation import generate_subtrees
 from loreiba.sgcl.trees.loss import syntax_tree_guided_loss
 
 logger = logging.getLogger(__name__)
+
+
+def _remove_cls_and_sep(reprs: torch.Tensor, word_spans: torch.Tensor):
+    batch_size, _, hidden = reprs.shape
+
+    word_spans_mask = torch.ones(word_spans.shape, device=word_spans.device).all(-1).unsqueeze(-1)
+    word_spans_mask[:, 0] = False
+    word_spans_mask[:, -1] = False
+
+    reprs_mask = torch.ones(reprs.shape, device=reprs.device).all(-1).unsqueeze(-1)
+    reprs_mask[:, 0] = False
+    reprs_mask[:, -1] = False
+
+    reprs = reprs.masked_select(reprs_mask).reshape((batch_size, -1, hidden))
+    word_spans = word_spans.masked_select(word_spans_mask).reshape((batch_size, -1, 2))
+    word_spans = word_spans - 1
+    return reprs, word_spans
 
 
 @Model.register("loreiba.sgcl.model.model::sgcl_model")
@@ -35,6 +55,7 @@ class SGCLModel(Model):
         tree_sgcl_config: Optional[TreeSgclConfig] = None,
         phrase_sgcl_config: Optional[PhraseSgclConfig] = None,
         xpos_tagging: bool = True,
+        parser: Optional[BiaffineDependencyParser] = None,
         *args,
         **kwargs,
     ):
@@ -57,6 +78,10 @@ class SGCLModel(Model):
 
         if xpos_tagging:
             self.xpos_head = XposHead(encoder.config.num_hidden_layers + 1, encoder.config.hidden_size, counts["xpos"])
+            logger.info("xpos tagging head initialized")
+        self.parser = parser
+        if parser is not None:
+            logger.info("dynamic parsing head initialized")
 
         self.tree_sgcl_config = tree_sgcl_config
         self.phrase_sgcl_config = phrase_sgcl_config
@@ -71,10 +96,15 @@ class SGCLModel(Model):
         xpos,
         head,
         deprel,
+        orig_head,
+        orig_deprel,
+        tree_is_gold,
         labels=None,
         tree_sets=None,
         phrase_sets=None,
     ):
+        tree_is_gold = tree_is_gold.squeeze(-1)
+        # Encode the inputs
         encoder_outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -85,6 +115,42 @@ class SGCLModel(Model):
         hidden_states = encoder_outputs.hidden_states[1:]
         attentions = encoder_outputs.attentions
         last_encoder_state = encoder_outputs.last_hidden_state
+
+        if self.parser is not None and (self.tree_sgcl_config is not None or self.phrase_sgcl_config is not None):
+            # TODO: use predicted xpos?
+            last_encoder_state_trimmed, token_spans_trimmed = _remove_cls_and_sep(last_encoder_state, token_spans)
+            parser_output = self.parser.forward(
+                last_encoder_state_trimmed, token_spans_trimmed, xpos, tree_is_gold, orig_deprel, orig_head
+            )
+            # Output includes sentinel token, which we need to remove
+            pred_head = parser_output["heads"][:, 1:]
+            head = pred_head
+            # dill_dump(output, '/tmp/output')
+            # dill_dump(orig_head, '/tmp/orig_head')
+            # dill_dump(orig_deprel, '/tmp/orig_deprel')
+            # dill_dump(head, '/tmp/head')
+            # dill_dump(deprel, '/tmp/deprel')
+            # dill_dump(dependency_token_spans, '/tmp/dependency_token_spans')
+            # dill_dump(token_spans, '/tmp/token_spans')
+            # assert False
+            # output = dill_load('/tmp/output')
+            # orig_head=dill_load('/tmp/orig_head')
+            # orig_deprel=dill_load( '/tmp/orig_deprel')
+            # head = dill_load('/tmp/head')
+            # deprel = dill_load('/tmp/deprel')
+            # dependency_token_spans = dill_load('/tmp/dependency_token_spans')
+            # token_spans = dill_load( '/tmp/token_spans')
+            # output.keys()
+            # output['heads'][3].shape
+            # output['mask'][3]
+            # head[3]
+            # output['']
+            # head.shape
+            # token_spans.shape
+        if self.tree_sgcl_config is not None and tree_sets is None:
+            tree_sets = generate_subtrees(self.tree_sgcl_config, head)
+        if self.phrase_sgcl_config is not None and phrase_sets is None:
+            phrase_sets = generate_phrase_sets(self.phrase_sgcl_config, head, token_spans)
 
         if labels is not None:
             outputs = {
@@ -107,6 +173,12 @@ class SGCLModel(Model):
                 loss += xpos_outputs["loss"]
                 outputs["progress_items"]["xpos_acc"] = xpos_outputs["accuracy"].item()
                 outputs["progress_items"]["xpos_loss"] = xpos_outputs["loss"].item()
+
+            # parser loss
+            if self.parser is not None:
+                loss += parser_output["loss"]
+                outputs["progress_items"]["arc_loss"] = parser_output["arc_loss"].item()
+                outputs["progress_items"]["tag_loss"] = parser_output["tag_loss"].item()
 
             # Replaced token detection loss for electra (if using)
             if "rtd" in head_loss:

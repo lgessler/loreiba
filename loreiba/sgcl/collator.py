@@ -53,7 +53,6 @@ class SgclDataCollator(DataCollator):
         self,
         tokenizer: Lazy[Tokenizer],
         mask_only: bool = False,
-        static_masking: bool = True,
         text_field: str = "input_ids",
         span_field: str = "token_spans",
         tree_config: Optional[TreeSgclConfig] = None,
@@ -62,7 +61,6 @@ class SgclDataCollator(DataCollator):
         tokenizer = tokenizer.construct()
         self.tokenizer = tokenizer
         self.text_pad_id = tokenizer.pad_token_id
-        self.static_masking = static_masking
         self.text_field = text_field
         self.span_field = span_field
         self.mask_only = mask_only
@@ -87,7 +85,7 @@ class SgclDataCollator(DataCollator):
             if k in ["token_spans", "dependency_token_spans"]:
                 output[k] = output[k].view(output[k].shape[0], -1, 2)
 
-            if not self.static_masking and k == self.text_field:
+            if k == self.text_field:
                 if not self.mask_only:
                     _, labels = self.mlm_collator.torch_mask_tokens(output[k])
                 else:

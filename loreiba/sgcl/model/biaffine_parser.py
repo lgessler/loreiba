@@ -2,29 +2,24 @@
 Taken from https://github.com/allenai/allennlp-models/blob/main/allennlp_models/structured_prediction/models/biaffine_dependency_parser.py
 """
 
-from typing import Dict, Tuple, Any, List, Optional, Iterable
-import logging
 import copy
+import logging
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-
+import numpy
 import torch
 import torch.nn.functional as F
+from allennlp_light.modules import FeedForward, InputVariationalDropout, Seq2SeqEncoder
+from allennlp_light.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
+from allennlp_light.nn import Activation, InitializerApplicator
+from allennlp_light.nn.chu_liu_edmonds import decode_mst
+from allennlp_light.nn.util import (get_device_of, get_lengths_from_binary_sequence_mask, get_range_vector,
+                                    get_text_field_mask, masked_log_softmax)
+from tango.common import FromParams
 from torch.nn import Embedding
 from torch.nn.modules import Dropout
-import numpy
 
-from allennlp_light.modules import Seq2SeqEncoder, InputVariationalDropout
-from allennlp_light.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
-from allennlp_light.modules import FeedForward
-from allennlp_light.nn import InitializerApplicator, Activation
-from allennlp_light.nn.util import get_text_field_mask, get_range_vector
-from allennlp_light.nn.util import (
-    get_device_of,
-    masked_log_softmax,
-    get_lengths_from_binary_sequence_mask
-)
-from allennlp_light.nn.chu_liu_edmonds import decode_mst
-
+from loreiba.common import pool_embeddings
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +79,7 @@ class AttachmentScores:
         mask : `torch.BoolTensor`, optional (default = `None`).
             A tensor of the same shape as `predicted_indices`.
         """
-        detached = self.detach_tensors(
-            predicted_indices, predicted_labels, gold_indices, gold_labels, mask
-        )
+        detached = self.detach_tensors(predicted_indices, predicted_labels, gold_indices, gold_labels, mask)
         predicted_indices, predicted_labels, gold_indices, gold_labels, mask = detached
 
         if mask is None:
@@ -135,9 +128,7 @@ class AttachmentScores:
             unlabeled_attachment_score = float(self._unlabeled_correct) / float(self._total_words)
             labeled_attachment_score = float(self._labeled_correct) / float(self._total_words)
         if self._total_sentences > 0:
-            unlabeled_exact_match = float(self._exact_unlabeled_correct) / float(
-                self._total_sentences
-            )
+            unlabeled_exact_match = float(self._exact_unlabeled_correct) / float(self._total_sentences)
             labeled_exact_match = float(self._exact_labeled_correct) / float(self._total_sentences)
         if reset:
             self.reset()
@@ -158,7 +149,7 @@ class AttachmentScores:
         self._total_sentences = 0.0
 
 
-class BiaffineDependencyParser(torch.nn.Module):
+class BiaffineDependencyParser(torch.nn.Module, FromParams):
     """
     This dependency parser follows the model of
     [Deep Biaffine Attention for Neural Dependency Parsing (Dozat and Manning, 2016)]
@@ -212,6 +203,7 @@ class BiaffineDependencyParser(torch.nn.Module):
         tag_representation_dim: int,
         arc_representation_dim: int,
         num_pos_tags: int,
+        num_head_tags: int,
         tag_feedforward: FeedForward = None,
         arc_feedforward: FeedForward = None,
         pos_tag_embedding_dim: int = 100,
@@ -234,16 +226,12 @@ class BiaffineDependencyParser(torch.nn.Module):
             arc_representation_dim, arc_representation_dim, use_input_biases=True
         )
 
-        num_labels = self.vocab.get_vocab_size("head_tags")
-
         self.head_tag_feedforward = tag_feedforward or FeedForward(
             encoder_dim, 1, tag_representation_dim, Activation.by_name("elu")()
         )
         self.child_tag_feedforward = copy.deepcopy(self.head_tag_feedforward)
 
-        self.tag_bilinear = torch.nn.modules.Bilinear(
-            tag_representation_dim, tag_representation_dim, num_labels
-        )
+        self.tag_bilinear = torch.nn.modules.Bilinear(tag_representation_dim, tag_representation_dim, num_head_tags)
 
         self._dropout = InputVariationalDropout(dropout)
         self._input_dropout = Dropout(input_dropout)
@@ -256,26 +244,22 @@ class BiaffineDependencyParser(torch.nn.Module):
         else:
             self._pos_tag_embedding = None
 
-        if representation_dim != encoder.get_output_dim():
-            raise ValueError(f"Representation dim {representation_dim} must match encoder output dim {encoder_dim}")
+        if representation_dim != encoder.get_input_dim():
+            raise ValueError(
+                f"Representation dim {representation_dim} must match encoder input dim {encoder.get_input_dim()}"
+            )
         if tag_representation_dim != self.head_tag_feedforward.get_output_dim():
-            raise ValueError(f"Tag representation dim {tag_representation_dim} must match head_tag_feedforward output dim {self.head_tag_feedforward.get_output_dim()}")
+            raise ValueError(
+                f"Tag representation dim {tag_representation_dim} must match head_tag_feedforward output dim {self.head_tag_feedforward.get_output_dim()}"
+            )
         if arc_representation_dim != self.head_arc_feedforward.get_output_dim():
-            raise ValueError(f"Arc representation dim {arc_representation_dim} must head_arc_feedforward output dim {self.head_arc_feedforward.get_output_dim()}")
+            raise ValueError(
+                f"Arc representation dim {arc_representation_dim} must head_arc_feedforward output dim {self.head_arc_feedforward.get_output_dim()}"
+            )
 
         self.use_mst_decoding_for_validation = use_mst_decoding_for_validation
-
-        tags = self.vocab.get_token_to_index_vocabulary("pos")
-        punctuation_tag_indices = {
-            tag: index for tag, index in tags.items() if tag in POS_TO_IGNORE
-        }
-        self._pos_to_ignore = set(punctuation_tag_indices.values())
-        logger.info(
-            f"Found POS tags corresponding to the following punctuation : {punctuation_tag_indices}. "
-            "Ignoring words with these POS tags for evaluation."
-        )
-
         self._attachment_scores = AttachmentScores()
+        self._pos_to_ignore = []
         initializer(self)
 
     def forward(
@@ -283,6 +267,7 @@ class BiaffineDependencyParser(torch.nn.Module):
         input_reprs: torch.Tensor,
         word_spans: torch.LongTensor,
         pos_tags: torch.LongTensor,
+        loss_mask: torch.LongTensor,
         head_tags: torch.LongTensor = None,
         head_indices: torch.LongTensor = None,
     ) -> Dict[str, torch.Tensor]:
@@ -299,6 +284,10 @@ class BiaffineDependencyParser(torch.nn.Module):
             POS tags are required regardless of whether they are used in the model,
             because they are used to filter the evaluation metric to only consider
             heads of words which are not punctuation.
+        loss_mask : `torch.LongTensor`, required
+            A boolean mask of shape [batch_size] that indicates whether the given sequence
+            should be included in loss terms. (This is new in our modification of this module.)
+            1 for yes, 0 for no.
         head_tags : `torch.LongTensor`, optional (default = `None`)
             A torch tensor representing the sequence of integer gold class labels for the arcs
             in the dependency parse. Has shape `(batch_size, sequence_length)`.
@@ -326,6 +315,10 @@ class BiaffineDependencyParser(torch.nn.Module):
         mask : `torch.BoolTensor`
             A mask denoting the padded elements in the batch.
         """
+        input_reprs = pool_embeddings(input_reprs, word_spans)
+        mask = ~word_spans.eq(-1).all(-1)
+        mask[:, 0] = True
+
         if pos_tags is not None and self._pos_tag_embedding is not None:
             embedded_pos_tags = self._pos_tag_embedding(pos_tags)
             embedded_text_input = torch.cat([input_reprs, embedded_pos_tags], -1)
@@ -334,9 +327,8 @@ class BiaffineDependencyParser(torch.nn.Module):
         else:
             embedded_text_input = input_reprs
 
-        mask = ... # TODO generate from word_spans
         predicted_heads, predicted_head_tags, mask, arc_nll, tag_nll = self._parse(
-            embedded_text_input, mask, head_tags, head_indices
+            embedded_text_input, mask, loss_mask, head_tags, head_indices
         )
 
         loss = arc_nll + tag_nll
@@ -365,33 +357,11 @@ class BiaffineDependencyParser(torch.nn.Module):
 
         return output_dict
 
-    def make_output_human_readable(
-        self, output_dict: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
-
-        head_tags = output_dict.pop("head_tags").cpu().detach().numpy()
-        heads = output_dict.pop("heads").cpu().detach().numpy()
-        mask = output_dict.pop("mask")
-        lengths = get_lengths_from_binary_sequence_mask(mask)
-        head_tag_labels = []
-        head_indices = []
-        for instance_heads, instance_tags, length in zip(heads, head_tags, lengths):
-            instance_heads = list(instance_heads[1:length])
-            instance_tags = instance_tags[1:length]
-            labels = [
-                self.vocab.get_token_from_index(label, "head_tags") for label in instance_tags
-            ]
-            head_tag_labels.append(labels)
-            head_indices.append(instance_heads)
-
-        output_dict["predicted_dependencies"] = head_tag_labels
-        output_dict["predicted_heads"] = head_indices
-        return output_dict
-
     def _parse(
         self,
         embedded_text_input: torch.Tensor,
         mask: torch.BoolTensor,
+        loss_mask: torch.LongTensor,
         head_tags: torch.LongTensor = None,
         head_indices: torch.LongTensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -433,14 +403,18 @@ class BiaffineDependencyParser(torch.nn.Module):
             predicted_heads, predicted_head_tags = self._mst_decode(
                 head_tag_representation, child_tag_representation, attended_arcs, mask
             )
-        if head_indices is not None and head_tags is not None:
-
+        # Check if we have any gold trees and bail out if not
+        if loss_mask.sum().item() == 0:
+            device = loss_mask.device
+            arc_nll, tag_nll = torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
+        elif head_indices is not None and head_tags is not None:
             arc_nll, tag_nll = self._construct_loss(
                 head_tag_representation=head_tag_representation,
                 child_tag_representation=child_tag_representation,
                 attended_arcs=attended_arcs,
                 head_indices=head_indices,
                 head_tags=head_tags,
+                loss_mask=loss_mask,
                 mask=mask,
             )
         else:
@@ -450,6 +424,7 @@ class BiaffineDependencyParser(torch.nn.Module):
                 attended_arcs=attended_arcs,
                 head_indices=predicted_heads.long(),
                 head_tags=predicted_head_tags.long(),
+                loss_mask=loss_mask,
                 mask=mask,
             )
 
@@ -462,6 +437,7 @@ class BiaffineDependencyParser(torch.nn.Module):
         attended_arcs: torch.Tensor,
         head_indices: torch.Tensor,
         head_tags: torch.Tensor,
+        loss_mask: torch.LongTensor,
         mask: torch.BoolTensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -486,6 +462,8 @@ class BiaffineDependencyParser(torch.nn.Module):
         head_tags : `torch.Tensor`, required.
             A tensor of shape (batch_size, sequence_length).
             The dependency labels of the heads for every word.
+        loss_mask : `torch.LongTensor`, required.
+            Mask of shape [batch_size]: 1 if sequence should be included in loss, 0 otherwise
         mask : `torch.BoolTensor`, required.
             A mask of shape (batch_size, sequence_length), denoting unpadded
             elements in the sequence.
@@ -501,22 +479,14 @@ class BiaffineDependencyParser(torch.nn.Module):
         # shape (batch_size, 1)
         range_vector = get_range_vector(batch_size, get_device_of(attended_arcs)).unsqueeze(1)
         # shape (batch_size, sequence_length, sequence_length)
-        normalised_arc_logits = (
-            masked_log_softmax(attended_arcs, mask) * mask.unsqueeze(2) * mask.unsqueeze(1)
-        )
+        normalised_arc_logits = masked_log_softmax(attended_arcs, mask) * mask.unsqueeze(2) * mask.unsqueeze(1)
 
         # shape (batch_size, sequence_length, num_head_tags)
-        head_tag_logits = self._get_head_tags(
-            head_tag_representation, child_tag_representation, head_indices
-        )
-        normalised_head_tag_logits = masked_log_softmax(
-            head_tag_logits, mask.unsqueeze(-1)
-        ) * mask.unsqueeze(-1)
+        head_tag_logits = self._get_head_tags(head_tag_representation, child_tag_representation, head_indices)
+        normalised_head_tag_logits = masked_log_softmax(head_tag_logits, mask.unsqueeze(-1)) * mask.unsqueeze(-1)
         # index matrix with shape (batch, sequence_length)
         timestep_index = get_range_vector(sequence_length, get_device_of(attended_arcs))
-        child_index = (
-            timestep_index.view(1, sequence_length).expand(batch_size, sequence_length).long()
-        )
+        child_index = timestep_index.view(1, sequence_length).expand(batch_size, sequence_length).long()
         # shape (batch_size, sequence_length)
         arc_loss = normalised_arc_logits[range_vector, child_index, head_indices]
         tag_loss = normalised_head_tag_logits[range_vector, child_index, head_tags]
@@ -527,10 +497,15 @@ class BiaffineDependencyParser(torch.nn.Module):
 
         # The number of valid positions is equal to the number of unmasked elements minus
         # 1 per sequence in the batch, to account for the symbolic HEAD token.
-        valid_positions = mask.sum() - batch_size
+        valid_positions_by_sequence = mask.sum(-1) - 1
 
-        arc_nll = -arc_loss.sum() / valid_positions.float()
-        tag_nll = -tag_loss.sum() / valid_positions.float()
+        # Apply the loss mask
+        valid_positions_by_sequence = valid_positions_by_sequence * loss_mask.unsqueeze(-1)
+        arc_loss = arc_loss * loss_mask.unsqueeze(-1)
+        tag_loss = tag_loss * loss_mask.unsqueeze(-1)
+
+        arc_nll = -arc_loss.sum() / valid_positions_by_sequence.float().sum()
+        tag_nll = -tag_loss.sum() / valid_positions_by_sequence.float().sum()
         return arc_nll, tag_nll
 
     def _greedy_decode(
@@ -571,9 +546,7 @@ class BiaffineDependencyParser(torch.nn.Module):
             dependency tags of the greedily decoded heads of each word.
         """
         # Mask the diagonal, because the head of a word can't be itself.
-        attended_arcs = attended_arcs + torch.diag(
-            attended_arcs.new(mask.size(1)).fill_(-numpy.inf)
-        )
+        attended_arcs = attended_arcs + torch.diag(attended_arcs.new(mask.size(1)).fill_(-numpy.inf))
         # Mask padded tokens, because we only want to consider actual words as heads.
         if mask is not None:
             minus_mask = ~mask.unsqueeze(2)
@@ -585,9 +558,7 @@ class BiaffineDependencyParser(torch.nn.Module):
 
         # Given the greedily predicted heads, decode their dependency tags.
         # shape (batch_size, sequence_length, num_head_tags)
-        head_tag_logits = self._get_head_tags(
-            head_tag_representation, child_tag_representation, heads
-        )
+        head_tag_logits = self._get_head_tags(head_tag_representation, child_tag_representation, heads)
         _, head_tags = head_tag_logits.max(dim=2)
         return heads, head_tags
 
@@ -644,9 +615,7 @@ class BiaffineDependencyParser(torch.nn.Module):
         # Note that this log_softmax is over the tag dimension, and we don't consider pairs
         # of tags which are invalid (e.g are a pair which includes a padded element) anyway below.
         # Shape (batch, num_labels,sequence_length, sequence_length)
-        normalized_pairwise_head_logits = F.log_softmax(pairwise_head_logits, dim=3).permute(
-            0, 3, 1, 2
-        )
+        normalized_pairwise_head_logits = F.log_softmax(pairwise_head_logits, dim=3).permute(0, 3, 1, 2)
 
         # Mask padded tokens, because we only want to consider actual words as heads.
         minus_inf = -1e8
@@ -660,15 +629,11 @@ class BiaffineDependencyParser(torch.nn.Module):
         # This energy tensor expresses the following relation:
         # energy[i,j] = "Score that i is the head of j". In this
         # case, we have heads pointing to their children.
-        batch_energy = torch.exp(
-            normalized_arc_logits.unsqueeze(1) + normalized_pairwise_head_logits
-        )
+        batch_energy = torch.exp(normalized_arc_logits.unsqueeze(1) + normalized_pairwise_head_logits)
         return self._run_mst_decoding(batch_energy, lengths)
 
     @staticmethod
-    def _run_mst_decoding(
-        batch_energy: torch.Tensor, lengths: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _run_mst_decoding(batch_energy: torch.Tensor, lengths: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         heads = []
         head_tags = []
         for energy, length in zip(batch_energy.detach().cpu(), lengths):
@@ -733,9 +698,7 @@ class BiaffineDependencyParser(torch.nn.Module):
         """
         batch_size = head_tag_representation.size(0)
         # shape (batch_size,)
-        range_vector = get_range_vector(
-            batch_size, get_device_of(head_tag_representation)
-        ).unsqueeze(1)
+        range_vector = get_range_vector(batch_size, get_device_of(head_tag_representation)).unsqueeze(1)
 
         # This next statement is quite a complex piece of indexing, which you really
         # need to read the docs to understand. See here:
@@ -747,14 +710,10 @@ class BiaffineDependencyParser(torch.nn.Module):
         selected_head_tag_representations = head_tag_representation[range_vector, head_indices]
         selected_head_tag_representations = selected_head_tag_representations.contiguous()
         # shape (batch_size, sequence_length, num_head_tags)
-        head_tag_logits = self.tag_bilinear(
-            selected_head_tag_representations, child_tag_representation
-        )
+        head_tag_logits = self.tag_bilinear(selected_head_tag_representations, child_tag_representation)
         return head_tag_logits
 
-    def _get_mask_for_eval(
-        self, mask: torch.BoolTensor, pos_tags: torch.LongTensor
-    ) -> torch.LongTensor:
+    def _get_mask_for_eval(self, mask: torch.BoolTensor, pos_tags: torch.LongTensor) -> torch.LongTensor:
         """
         Dependency evaluation excludes words are punctuation.
         Here, we create a new mask to exclude word indices which
@@ -777,8 +736,3 @@ class BiaffineDependencyParser(torch.nn.Module):
             label_mask = pos_tags.eq(label)
             new_mask = new_mask & ~label_mask
         return new_mask
-
-    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        return self._attachment_scores.get_metric(reset)
-
-    default_predictor = "biaffine_dependency_parser"

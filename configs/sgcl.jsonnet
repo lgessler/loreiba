@@ -17,12 +17,12 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // Model settings
 // --------------------------------------------------------------------------------
 local max_length = 512;
-local static_masking = false;
 
 // For non-pretrained
 local FROM_PRETRAINED = false;
+local hidden_size = 128;
 local bert_config = {
-    hidden_size: 128,
+    hidden_size: hidden_size,
     num_hidden_layers: 3,
     num_attention_heads: 8,
     intermediate_size: 512,
@@ -37,8 +37,36 @@ local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
 local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
     max_subtrees_per_sentence: 5,
 };
+local parser = {
+    input_dim: hidden_size,
+    pos_tag_embedding_dim: 64,
+    encoder: {
+      type: "pytorch_transformer",
+      input_dim: hidden_size + 64,
+      num_layers: 1,
+      feedforward_hidden_dim: 512,
+      num_attention_heads: 8,
+      positional_encoding: "sinusoidal",
+      positional_embedding_size: hidden_size + 64,
+    },
+    //{ type: "passthrough", "input_dim": hidden_size + 64 },
+    //{
+    //  "type": "stacked_bidirectional_lstm",
+    //  "input_size": hidden_size + 64,
+    //  "hidden_size": hidden_size * 2,
+    //  "num_layers": 2,
+    //  "recurrent_dropout_probability": 0.3,
+    //  "use_highway": true
+    //},
+    tag_representation_dim: 50,
+    arc_representation_dim: 50,
+    num_pos_tags: { type: "ref", ref: "counts", key: "xpos" },
+    num_head_tags: { type: "ref", ref: "counts", key: "deprel" },
+    initializer: import "lib/parser_initializer.libsonnet",
+};
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
+    parser: parser,
     tokenizer: tokenizer,
     counts: { "type": "ref", "ref": "counts" },
     model_output_path: model_path,
@@ -93,7 +121,6 @@ local training_engine = {
 local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
     tokenizer: tokenizer,
-    static_masking: static_masking,
     tree_config: tree_sgcl_config,
     phrase_config: phrase_sgcl_config,
     // whether to replace [MASK] with 10% UNK and 10% random. should be true for electra, false for bert
@@ -120,30 +147,44 @@ local val_dataloader = {
 
 {
     steps: {
+        // Read raw data
         raw_treebank_data: {
             type: "loreiba.data.conllu::read_ud_treebank",
             shortcut: language,
             tag: "r2.11"  // Use UD treebanks from release 2.11
         },
-        bare_text_data: {
+        raw_text_data: {
             type: "loreiba.data.conllu::read_text_only_conllu",
             shortcut: language,
             stanza_retokenize: if std.member(stanza_do_not_retokenize, language) then false else true,
             stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
             stanza_language_code: language_code_index[language],
         },
+
+        // Train tokenizer if necessary
         [if FROM_PRETRAINED then null else "tokenizer"]: {
             type: "loreiba.data.tokenize::train_tokenizer",
-            dataset: { "type": "ref", "ref": "bare_text_data" },
+            dataset: { "type": "ref", "ref": "raw_text_data" },
             model_path: model_path
         },
-        tokenized_text_data: {
+
+        // Tokenize input data
+        tokenized_treebank_data: {
             type: "loreiba.data.tokenize::tokenize_plus",
-            dataset: { "type": "ref", "ref": "bare_text_data" },
+            dataset: { type: "ref", ref: "raw_treebank_data" },
             max_length: max_length,
             tokenizer: tokenizer,
             step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
         },
+        tokenized_text_data: {
+            type: "loreiba.data.tokenize::tokenize_plus",
+            dataset: { "type": "ref", "ref": "raw_text_data" },
+            max_length: max_length,
+            tokenizer: tokenizer,
+            step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
+        },
+
+        // Parse non-treebanked data
         parsed_text_data: {
             type: "loreiba.data.stanza::stanza_parse_dataset",
             dataset: { "type": "ref", "ref": "tokenized_text_data" },
@@ -152,17 +193,32 @@ local val_dataloader = {
             stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
             batch_size: 128,
         },
+
+        // Postprocess
+        postprocessed_treebank_data: {
+            type: "loreiba.data.postprocess::expand_trees_with_subword_edges",
+            dataset: { type: "ref", ref: "tokenized_treebank_data" }
+        },
+        postprocessed_text_data: {
+            type: "loreiba.data.postprocess::expand_trees_with_subword_edges",
+            dataset: { type: "ref", ref: "parsed_text_data" }
+        },
+
+        // Merge inputs
         model_inputs: {
             type: "loreiba.sgcl.data::finalize",
-            dataset: { "type": "ref", "ref": "parsed_text_data" },
-            static_masking: static_masking,
-            tokenizer: tokenizer,
+            dataset: { "type": "ref", "ref": "postprocessed_text_data" },
+            treebank_dataset: { "type": "ref", "ref": "postprocessed_treebank_data" },
         },
+
+        // Record label counts
         counts: {
             type: "loreiba.data.util::count_unique_values",
             dataset: { "type": "ref", "ref": "model_inputs" },
-            keys: ["xpos"],
+            keys: ["xpos", "deprel"],
         },
+
+        // Begin training
         trained_model: {
             type: "loreiba.train::train",
             model: model,
