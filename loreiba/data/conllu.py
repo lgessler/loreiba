@@ -169,9 +169,12 @@ class ReadUDTreebank(Step):
         test_conllu = conllu.parse(requests.get(test_url).text)
 
         def tokenlist_to_record(tl: conllu.TokenList):
+            # filter out supertokens and ellipsis tokens
+            metadata = tl.metadata
+            tl = [t for t in tl if isinstance(t["id"], int)]
             return {
-                "idx": tl.metadata["sent_id"],
-                "text": tl.metadata["text"],
+                "idx": metadata["sent_id"],
+                "text": metadata["text"],
                 "tokens": [t["form"] for t in tl],
                 "lemmas": [t["lemma"] for t in tl],
                 "upos": [t["upos"] for t in tl],
