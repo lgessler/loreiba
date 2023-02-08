@@ -21,9 +21,10 @@ local max_length = 512;
 // For non-pretrained
 local FROM_PRETRAINED = false;
 local hidden_size = 128;
+local num_layers = 3;
 local bert_config = {
     hidden_size: hidden_size,
-    num_hidden_layers: 3,
+    num_hidden_layers: num_layers,
     num_attention_heads: 8,
     intermediate_size: 512,
     max_position_embeddings: max_length,
@@ -39,6 +40,7 @@ local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
 };
 local parser = {
     input_dim: hidden_size,
+    num_layers: num_layers + 1,
     pos_tag_embedding_dim: 64,
     encoder: {
       type: "pytorch_transformer",

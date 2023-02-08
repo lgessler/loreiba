@@ -118,35 +118,13 @@ class SGCLModel(Model):
 
         if self.parser is not None:
             # TODO: use predicted xpos?
-            last_encoder_state_trimmed, token_spans_trimmed = _remove_cls_and_sep(last_encoder_state, token_spans)
+            trimmed = [_remove_cls_and_sep(h_layer, token_spans) for h_layer in encoder_outputs.hidden_states]
             parser_output = self.parser.forward(
-                last_encoder_state_trimmed, token_spans_trimmed, xpos, tree_is_gold, orig_deprel, orig_head
+                [x[0] for x in trimmed], trimmed[-1][1], xpos, tree_is_gold, orig_deprel, orig_head
             )
             # Output includes sentinel token, which we need to remove
             pred_head = parser_output["heads"][:, 1:]
             head = pred_head
-            # dill_dump(output, '/tmp/output')
-            # dill_dump(orig_head, '/tmp/orig_head')
-            # dill_dump(orig_deprel, '/tmp/orig_deprel')
-            # dill_dump(head, '/tmp/head')
-            # dill_dump(deprel, '/tmp/deprel')
-            # dill_dump(dependency_token_spans, '/tmp/dependency_token_spans')
-            # dill_dump(token_spans, '/tmp/token_spans')
-            # assert False
-            # output = dill_load('/tmp/output')
-            # orig_head=dill_load('/tmp/orig_head')
-            # orig_deprel=dill_load( '/tmp/orig_deprel')
-            # head = dill_load('/tmp/head')
-            # deprel = dill_load('/tmp/deprel')
-            # dependency_token_spans = dill_load('/tmp/dependency_token_spans')
-            # token_spans = dill_load( '/tmp/token_spans')
-            # output.keys()
-            # output['heads'][3].shape
-            # output['mask'][3]
-            # head[3]
-            # output['']
-            # head.shape
-            # token_spans.shape
         if self.tree_sgcl_config is not None and tree_sets is None:
             tree_sets = generate_subtrees(self.tree_sgcl_config, head)
         if self.phrase_sgcl_config is not None and phrase_sets is None:

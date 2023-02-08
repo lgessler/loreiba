@@ -15,11 +15,14 @@ class XposHead(torch.nn.Module):
         num_layers: int,
         embedding_dim: int,
         num_tags: int,
+        use_layer_mix: bool = True,
     ):
         super().__init__()
         self.linear = torch.nn.Linear(embedding_dim, num_tags)
         self.accuracy = Accuracy(num_classes=num_tags, task="multiclass", top_k=1)
-        self.mix = ScalarMix(num_layers)
+        self.use_layer_mix = use_layer_mix
+        if self.use_layer_mix:
+            self.mix = ScalarMix(num_layers)
 
     def forward(
         self,  # type: ignore
@@ -29,7 +32,8 @@ class XposHead(torch.nn.Module):
     ) -> Dict[str, torch.Tensor]:
         tokenwise_hidden_states = [pool_embeddings(h, token_spans) for h in hidden]
         tokenwise_hidden_states = [x[:, 1 : x.shape[1] - 1] for x in tokenwise_hidden_states]
-        logits = self.linear(self.mix(tokenwise_hidden_states))
+        hidden = self.mix(tokenwise_hidden_states) if self.use_layer_mix else tokenwise_hidden_states[-1]
+        logits = self.linear(hidden)
 
         token_counts = (~token_spans.eq(0)).all(-1).sum(-1) - 1
         mask = torch.stack(

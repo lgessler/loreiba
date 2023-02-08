@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import numpy
 import torch
 import torch.nn.functional as F
+from allennlp_light import ScalarMix
 from allennlp_light.modules import FeedForward, InputVariationalDropout, Seq2SeqEncoder
 from allennlp_light.modules.matrix_attention.bilinear_matrix_attention import BilinearMatrixAttention
 from allennlp_light.nn import Activation, InitializerApplicator
@@ -171,6 +172,9 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         of tokens.
     input_dim : `int`, required.
         Dims of the input hidden representation.
+    num_layers: `int`, required.
+        Number of layers in the Transformer encoder stack, including the static embeddings.
+        Needed if `use_layer_mix` is True.
     tag_representation_dim : `int`, required.
         The dimension of the MLPs used for dependency tag prediction.
     arc_representation_dim : `int`, required.
@@ -192,6 +196,8 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         The variational dropout applied to the output of the encoder and MLP layers.
     input_dropout : `float`, optional, (default = `0.0`)
         The dropout applied to the embedded text input.
+    use_layer_mix : `bool`, optional, (default = `True`)
+        When True, use a ScalarMix across all layers as the input hidden representation.
     initializer : `InitializerApplicator`, optional (default=`InitializerApplicator()`)
         Used to initialize the model parameters.
     """
@@ -200,6 +206,7 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         self,
         encoder: Seq2SeqEncoder,
         input_dim: int,
+        num_layers: int,
         tag_representation_dim: int,
         arc_representation_dim: int,
         num_pos_tags: int,
@@ -210,6 +217,7 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         use_mst_decoding_for_validation: bool = True,
         dropout: float = 0.0,
         input_dropout: float = 0.0,
+        use_layer_mix: bool = True,
         initializer: InitializerApplicator = InitializerApplicator(),
     ) -> None:
         super().__init__()
@@ -260,11 +268,16 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         self.use_mst_decoding_for_validation = use_mst_decoding_for_validation
         self._attachment_scores = AttachmentScores()
         self._pos_to_ignore = []
+
+        self.use_layer_mix = use_layer_mix
+        if use_layer_mix:
+            self.mix = ScalarMix(num_layers)
+
         initializer(self)
 
     def forward(
         self,  # type: ignore
-        input_reprs: torch.Tensor,
+        input_reprs: List[torch.Tensor],
         word_spans: torch.LongTensor,
         pos_tags: torch.LongTensor,
         loss_mask: torch.LongTensor,
@@ -274,8 +287,8 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         """
         # Parameters
 
-        input_reprs : `torch.Tensor`, required
-            Input representations from the encoder
+        input_reprs : `List[torch.Tensor]`, required
+            Layerwise input representations from the encoder
         word_spans: `torch.LongTensor`, required
             Contains pairs of inclusive indices that encode the mapping from wordpiece tokens
             to original tokens.
@@ -315,7 +328,8 @@ class BiaffineDependencyParser(torch.nn.Module, FromParams):
         mask : `torch.BoolTensor`
             A mask denoting the padded elements in the batch.
         """
-        input_reprs = pool_embeddings(input_reprs, word_spans)
+        input_reprs = [pool_embeddings(l, word_spans) for l in input_reprs]
+        input_reprs = self.mix(input_reprs) if self.use_layer_mix else input_reprs[-1]
         mask = ~word_spans.eq(-1).all(-1)
         mask[:, 0] = True
 
