@@ -147,7 +147,7 @@ class SGCLModel(Model):
 
             # XPOS loss
             if self.xpos_tagging:
-                xpos_outputs = self.xpos_head(encoder_outputs.hidden_states, token_spans, xpos)
+                xpos_outputs = self.xpos_head(encoder_outputs.hidden_states, token_spans, tree_is_gold, xpos)
                 loss += xpos_outputs["loss"]
                 outputs["progress_items"]["xpos_acc"] = xpos_outputs["accuracy"].item()
                 outputs["progress_items"]["xpos_loss"] = xpos_outputs["loss"].item()
