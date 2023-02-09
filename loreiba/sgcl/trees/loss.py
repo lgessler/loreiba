@@ -186,12 +186,15 @@ def assess_tree_sgcl_batched(
     negative_dots = torch.einsum("abch,abcdeh->abcde", root_zs, reshaped_negative_zs) * negative_mask.unsqueeze(0)
     negative_eij = masked_softmax(negative_dots, negative_mask, -1).nan_to_num()
     negative_sim_rhs = (reshaped_negative_zs * negative_eij.unsqueeze(-1)).sum(-2)
-    # TODO: respect config.max_negatives_used_in_loss
+
     negative_cosines = F.cosine_similarity(root_zs.unsqueeze(-2), negative_sim_rhs, dim=-1)
+    top_negative_cosines = negative_cosines.topk(config.max_negatives_used_in_loss).values
+    top_negative_mask = negative_mask[:, :, : config.max_negatives_used_in_loss]
 
     # Pack the positive with the negative cosines to prepare for softmaxing
-    combined = torch.concat((positive_cosines.unsqueeze(-1), negative_cosines), dim=-1)
-    reduced_negative_mask = negative_mask.any(dim=-1)
+    combined = torch.concat((positive_cosines.unsqueeze(-1), top_negative_cosines), dim=-1)
+
+    reduced_negative_mask = top_negative_mask.any(dim=-1)
     reduced_positive_mask = positive_mask.any(dim=-1)
     combined_mask = torch.concat((reduced_positive_mask.unsqueeze(-1), reduced_negative_mask), dim=-1)
 
