@@ -1,3 +1,4 @@
+import itertools
 from itertools import chain, repeat
 from typing import Optional
 
@@ -21,6 +22,7 @@ class Finalize(Step):
     DETERMINISTIC = True
     CACHEABLE = True
     FORMAT = DatasetsFormat()
+    VERSION = "2"
 
     def _get_labels(self, dataset, treebank_dataset):
         deprels = set()
@@ -41,9 +43,7 @@ class Finalize(Step):
     # Note: we are expecting "full conllu" in the dataset argument here, as would be produced by
     # loreiba.data.stanza::stanza_parse_dataset
     def run(
-        self,
-        dataset: DatasetDict,
-        treebank_dataset: Optional[DatasetDict] = None,
+        self, dataset: DatasetDict, treebank_dataset: Optional[DatasetDict] = None, unlabeled_per_labeled: int = 8
     ) -> DatasetDict:
         dataset = dataset.remove_columns(["tokens", "lemmas", "upos"])
 
@@ -88,11 +88,21 @@ class Finalize(Step):
                     }
                     yield new_row
 
-            rows = list(get_rows(rows))
+            base_rows = list(get_rows(rows))
             if treebank_dataset is not None:
                 self.logger.info(f"Extending split {split} with gold treebanked sentences...")
-                rows.extend(list(get_rows(treebank_dataset[split], tree_is_gold=[1])))
-            new_dataset[split] = Dataset.from_list(rows, features=features)
+                treebank_rows = list(get_rows(treebank_dataset[split], tree_is_gold=[1]))
+                if split == "train":
+                    target_length = len(base_rows) // unlabeled_per_labeled
+                    if len(treebank_rows) > target_length:
+                        raise Exception("More treebank rows than expected!")
+                    self.logger.info(f"{len(treebank_rows)} treebank sequences found. Repeating...")
+                    treebank_rows = list(itertools.islice(itertools.cycle(treebank_rows), target_length))
+                    self.logger.info(
+                        f"Upsampled treebank instances to {len(treebank_rows)}. (Unlabeled: {len(base_rows)})"
+                    )
+                base_rows.extend(treebank_rows)
+            new_dataset[split] = Dataset.from_list(base_rows, features=features)
             self.logger.info(f"Appended split {split} with {len(new_dataset[split])} sequences")
 
         return datasets.DatasetDict(new_dataset).with_format("torch")
