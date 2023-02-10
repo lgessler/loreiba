@@ -19,9 +19,9 @@ class ReadCola(Step):
     def run(
         self,
         tokenizer: Tokenizer,
-        train_path: Optional[str] = "data/cola_1_1_tokenized_train.tsv",
-        dev_path: Optional[str] = "data/cola_1_1_tokenized_dev.tsv",
-        test_path: Optional[str] = "data/cola_1_1_tokenized_test.tsv",
+        train_path: Optional[str] = "data/cola_train.tsv",
+        dev_path: Optional[str] = "data/cola_dev.tsv",
+        test_path: Optional[str] = "data/cola_dev.tsv",
     ) -> DatasetDict:
         def read_tsv(path):
             xs = []
