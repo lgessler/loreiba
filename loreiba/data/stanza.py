@@ -61,23 +61,24 @@ class StanzaParseDataset(Step):
                 self.logger.info(f"Found parsed outputs at {cache_key}")
                 return dill_load(cache_key)
 
-        chunks = list(mit.chunked(data["tokens"], batch_size))
-        outputs = []
-        for chunk in Tqdm.tqdm(chunks, desc=f"Parsing split {split}..."):
-            inputs = [stanza.Document([], text=[sentence for sentence in chunk])]
-            output = pipeline(inputs)[0].to_dict()
-            for i, sentence in enumerate(output):
-                record = StanzaParseDataset.sentence_to_record(sentence, chunk[i])
-                outputs.append(record)
-
-        for i, output in enumerate(outputs):
-            output["input_ids"] = data[i]["input_ids"]
-            output["token_type_ids"] = data[i]["token_type_ids"]
-            output["attention_mask"] = data[i]["attention_mask"]
-            output["token_spans"] = data[i]["token_spans"]
+        def generator():
+            chunks = list(mit.chunked(data["tokens"], batch_size))
+            previous = 0
+            for chunk in Tqdm.tqdm(chunks, desc=f"Parsing split {split}..."):
+                inputs = [stanza.Document([], text=[sentence for sentence in chunk])]
+                output = pipeline(inputs)[0].to_dict()
+                for i, sentence in enumerate(output):
+                    record = StanzaParseDataset.sentence_to_record(sentence, chunk[i])
+                    idx = previous + i
+                    record["input_ids"] = data[idx]["input_ids"]
+                    record["token_type_ids"] = data[idx]["token_type_ids"]
+                    record["attention_mask"] = data[idx]["attention_mask"]
+                    record["token_spans"] = data[idx]["token_spans"]
+                    yield record
+                previous += len(output)
 
         self.logger.info(f"Finished processing {split}")
-        instances = datasets.Dataset.from_list(outputs, features=StanzaParseDataset.features)
+        instances = datasets.Dataset.from_generator(generator, features=StanzaParseDataset.features)
         if parsed_data_cache_dir is not None:
             cache_key = os.path.join(parsed_data_cache_dir, f"{language_code}-{split}.dill")
             self.logger.info(f"Writing parsed outputs to cache at {cache_key}")
