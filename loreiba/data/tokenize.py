@@ -126,11 +126,11 @@ class TrainTokenizer(Step):
     DETERMINISTIC = True
     CACHEABLE = True
 
-    def run(self, dataset: DatasetDict, model_path: str) -> None:
+    def run(self, dataset: DatasetDict, model_path: str, vocab_size: Optional[int] = None) -> None:
         sentences = dataset["train"]["tokens"]
         if os.path.exists(model_path):
             self.logger.info(f"Already found model at {model_path}. Removing...")
             shutil.rmtree(model_path)
-        train_tokenizer([" ".join(s) for s in sentences], model_path)
+        train_tokenizer([" ".join(s) for s in sentences], model_path, vocab_size=vocab_size)
         # simple_train_tokenizer(sentences, model_path)
         self.logger.info(f"Wrote tokenizer to {model_path}")
