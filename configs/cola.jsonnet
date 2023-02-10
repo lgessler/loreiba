@@ -11,7 +11,7 @@ local model = {
 };
 
 // our settings
-local batch_size = 128;
+local batch_size = 64;
 local num_epochs = 10;
 
 // --------------------------------------------------------------------------------
@@ -67,6 +67,7 @@ local val_dataloader = {
             model: model,
             dataset_dict: { type: "ref", ref: "inputs" },
             training_engine: training_engine,
+            grad_accum: 4,
             log_every: 1,
             train_dataloader: train_dataloader,
             train_epochs: num_epochs,
