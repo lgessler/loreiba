@@ -30,7 +30,7 @@ class StreamingReadTextOnly(Step):
             def inner():
                 with open(path, "r") as f:
                     for line in f:
-                        yield {"tokens": " ".split(line.strip())}
+                        yield {"tokens": [t for t in line.strip().split(" ") if len(t) > 0 and not t.isspace()]}
 
             return inner
 
