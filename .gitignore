@@ -9,4 +9,6 @@ __pycache__
 /data/maltese
 /data/uyghur
 /data/wolof
+/data/bert
+/data/english
 scratch.py
