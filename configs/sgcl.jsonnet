@@ -94,16 +94,18 @@ local BERT_steps = 1e6;
 local BERT_total_instances = BERT_steps * BERT_batch_size;
 
 // our settings
-local batch_size = 32;
 // We want a batch size of 256 (standard in the TLM lit and shown to have benefits) but the GPU memory
 // on machines I have can't handle more than 32 reliably. To get around this, use gradient accumulation
-// for an effective batch size of 32. See:
+// for an effective batch size of 256. See:
 // https://medium.com/huggingface/training-larger-batches-practical-tips-on-1-gpu-multi-gpu-distributed-setups-ec88c3e51255
+local batch_size = 32;
 local grad_accum = 8;
 local effective_batch_size = grad_accum * batch_size;
-local num_steps = BERT_steps * (BERT_batch_size / effective_batch_size) / 16;  // 16 is an extra reduction we're making
+// (BERT_batch_size / batch_size) is a coefficient we should multiply the BERT_steps by to ensure
+// we're getting through the same number of training instances
+local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
 
-local validate_every = 20000 / grad_accum;
+local validate_every = 20000 * grad_accum;
 
 // --------------------------------------------------------------------------------
 // Optimizer settings
