@@ -14,8 +14,8 @@ from tango.common import Tqdm
 from tango.integrations.datasets import DatasetsFormat
 
 
-@Step.register("loreiba.data.conllu::streaming_read_text_only_conllu")
-class StreamingReadTextOnlyConllu(Step):
+@Step.register("loreiba.data.conllu::streaming_read_text_only")
+class StreamingReadTextOnly(Step):
     DETERMINISTIC = True
     CACHEABLE = True
     FORMAT = DatasetsFormat()
@@ -23,25 +23,23 @@ class StreamingReadTextOnlyConllu(Step):
     def run(
         self,
         shortcut: Optional[str] = None,
-        conllu_path_train: Optional[str] = None,
-        conllu_path_dev: Optional[str] = None,
+        text_path_train: Optional[str] = None,
+        text_path_dev: Optional[str] = None,
     ) -> DatasetDict:
-        def read_conllu(path):
+        def read_text(path):
             def inner():
                 with open(path, "r") as f:
-                    i = 0
-                    for s in conllu.parse_incr(f):
-                        i += 1
-                        yield {"tokens": [t["form"] for t in s]}
+                    for line in f:
+                        yield {"tokens": " ".split(line.strip())}
 
             return inner
 
         train_dataset = datasets.Dataset.from_generator(
-            read_conllu(conllu_path_train),
+            read_text(text_path_train),
             features=datasets.Features({"tokens": datasets.Sequence(datasets.Value(dtype="string"))}),
         )
         dev_dataset = datasets.Dataset.from_generator(
-            read_conllu(conllu_path_dev),
+            read_text(text_path_dev),
             features=datasets.Features({"tokens": datasets.Sequence(datasets.Value(dtype="string"))}),
         )
 
