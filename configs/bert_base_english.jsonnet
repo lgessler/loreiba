@@ -18,8 +18,7 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // --------------------------------------------------------------------------------
 local max_length = 512;
 
-// For non-pretrained
-local FROM_PRETRAINED = false;
+local FROM_PRETRAINED = true;
 local hidden_size = 768;
 local num_layers = 12;
 local bert_config = {
@@ -30,7 +29,7 @@ local bert_config = {
     max_position_embeddings: max_length,
 };
 local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
-local tokenizer = { pretrained_model_name_or_path: model_path };
+local tokenizer = { pretrained_model_name_or_path: "roberta-base" };
 local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
     subtree_sampling_method: {type: "random", max_number: 3},
     max_negative_per_subtree: 10
@@ -48,9 +47,8 @@ local model = {
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
     encoder: {
-        type: "bert",
-        tokenizer: tokenizer,
-        bert_config: bert_config,
+        type: "pretrained_roberta",
+        model_path: "roberta-base"
     }
 };
 
@@ -71,13 +69,13 @@ local BERT_total_instances = BERT_steps * BERT_batch_size;
 // on machines I have can't handle more than 32 reliably. To get around this, use gradient accumulation:
 // https://medium.com/huggingface/training-larger-batches-practical-tips-on-1-gpu-multi-gpu-distributed-setups-ec88c3e51255
 local batch_size = 8;
-local grad_accum = 32;
+local grad_accum = 64;
 local effective_batch_size = grad_accum * batch_size;
 // We do not need to correct by (BERT_batch_size / batch_size) in order to ensure we're getting through the
 // same number of training instances because each step goes through `grad_accum` microbatches
-local num_steps = BERT_steps;
+local num_steps = 300000;
 
-local validate_every = 50000;
+local validate_every = 10000;
 
 // --------------------------------------------------------------------------------
 // Optimizer settings
@@ -93,7 +91,7 @@ local training_engine = {
     },
     lr_scheduler: {
         type: "transformers::cosine",
-        num_warmup_steps: 10000,
+        num_warmup_steps: 24000,
         num_training_steps: num_steps,
     },
     amp: false
@@ -129,21 +127,21 @@ local val_dataloader = {
 {
     steps: {
         // Read raw data
-        raw_treebank_data: {
+        treebank_data: {
             type: "loreiba.data.conllu::read_ud_treebank",
             shortcut: language,
             tag: "r2.11"  // Use UD treebanks from release 2.11
         },
-        raw_text_data: {
-            type: "loreiba.data.conllu::streaming_read_text_only",
-            text_path_train: "data/bert/train/train.txt",
-            text_path_dev: "data/bert/dev/dev.txt",
+        parsed_text_data: {
+            type: "loreiba.data.conllu::read_conllu",
+            train_path: "data/bert/train/train.conllu",
+            dev_path: "data/bert/dev/dev.conllu",
         },
 
         // Train tokenizer if necessary
         [if FROM_PRETRAINED then null else "tokenizer"]: {
             type: "loreiba.data.tokenize::train_tokenizer",
-            dataset: { "type": "ref", "ref": "raw_text_data" },
+            dataset: { "type": "ref", "ref": "parsed_text_data" },
             model_path: model_path,
             vocab_size: 30000,
         },
@@ -151,27 +149,17 @@ local val_dataloader = {
         // Tokenize input data
         tokenized_treebank_data: {
             type: "loreiba.data.tokenize::tokenize_plus",
-            dataset: { type: "ref", ref: "raw_treebank_data" },
+            dataset: { type: "ref", ref: "treebank_data" },
             max_length: max_length,
             tokenizer: tokenizer,
             step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
         },
         tokenized_text_data: {
             type: "loreiba.data.tokenize::tokenize_plus",
-            dataset: { "type": "ref", "ref": "raw_text_data" },
+            dataset: { "type": "ref", "ref": "parsed_text_data" },
             max_length: max_length,
             tokenizer: tokenizer,
             step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
-        },
-
-        // Parse non-treebanked data
-        parsed_text_data: {
-            type: "loreiba.data.stanza::stanza_parse_dataset",
-            dataset: { "type": "ref", "ref": "tokenized_text_data" },
-            language_code: language_code_index[language],
-            allow_retokenization: false,  // we tokenized earlier
-            stanza_use_mwt: if std.member(stanza_no_mwt, language) then false else true,
-            batch_size: 128,
         },
 
         // Postprocess
@@ -181,7 +169,7 @@ local val_dataloader = {
         },
         postprocessed_text_data: {
             type: "loreiba.data.postprocess::expand_trees_with_subword_edges",
-            dataset: { type: "ref", ref: "parsed_text_data" }
+            dataset: { type: "ref", ref: "tokenized_text_data" }
         },
 
         // Merge inputs
