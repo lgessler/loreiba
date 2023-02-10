@@ -6,7 +6,8 @@ import torch.nn.functional as F
 from tango.common import Registrable
 from tango.integrations.transformers import Tokenizer
 from torch import nn
-from transformers import AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel
+from transformers import (AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel, RobertaForMaskedLM,
+                          RobertaTokenizer)
 from transformers.activations import GELUActivation, gelu, get_activation
 
 from loreiba.common import dill_dump, dill_load
@@ -42,6 +43,31 @@ class TiedRobertaLMHead(nn.Module):
         x = _tied_generator_forward(x, self.embedding_weights)
 
         return x
+
+
+@SgclEncoder.register("pretrained_roberta")
+class PretrainedRobertaEncoder(SgclEncoder):
+    def __init__(self, model_path: str):
+        super().__init__()
+        tokenizer = RobertaTokenizer.from_pretrained(model_path)
+        self.pad_id = tokenizer.pad_token_id
+        pretrained_model = RobertaForMaskedLM.from_pretrained(model_path)
+        self.encoder = pretrained_model.roberta
+
+        self.config = self.encoder.config
+        self.tokenizer = tokenizer
+        self.head = pretrained_model.lm_head
+        # TiedRobertaLMHead(self.config, self.encoder.embeddings.word_embeddings.weight)
+
+    def forward(self, *args, **kwargs):
+        return self.encoder(*args, **kwargs)
+
+    def compute_loss(self, input_ids, attention_mask, token_type_ids, last_encoder_state, labels):
+        preds = self.head(last_encoder_state)
+        if not (labels != -100).any():
+            return 0.0
+        masked_lm_loss = F.cross_entropy(preds.view(-1, self.config.vocab_size), labels.view(-1), ignore_index=-100)
+        return {"mlm": masked_lm_loss}
 
 
 @SgclEncoder.register("bert")
