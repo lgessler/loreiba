@@ -11,7 +11,7 @@ local model = {
 };
 
 // our settings
-local batch_size = 64;
+local batch_size = 32;
 local num_epochs = 10;
 
 // --------------------------------------------------------------------------------
@@ -41,19 +41,11 @@ local train_dataloader = {
     shuffle: true,
     batch_size: batch_size,
     collate_fn: collate_fn,
-    pin_memory: true,
-    num_workers: 4,
-    prefetch_factor: 4,
-    persistent_workers: true,
 };
 local val_dataloader = {
     shuffle: false,
     batch_size: batch_size,
     collate_fn: collate_fn,
-    pin_memory: true,
-    num_workers: 4,
-    prefetch_factor: 4,
-    persistent_workers: true,
 };
 
 {
@@ -67,12 +59,11 @@ local val_dataloader = {
             model: model,
             dataset_dict: { type: "ref", ref: "inputs" },
             training_engine: training_engine,
-            grad_accum: 4,
             log_every: 1,
             train_dataloader: train_dataloader,
             train_epochs: num_epochs,
-            // validate_every: validate_every,
-            // checkpoint_every: 500,
+            validate_every: 2679,
+            checkpoint_every: 2679,
             validation_split: "dev",
             validation_dataloader: val_dataloader,
             // val_metric_name: "perplexity",
