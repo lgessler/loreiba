@@ -105,7 +105,7 @@ local effective_batch_size = grad_accum * batch_size;
 // same number of training instances because each step goes through `grad_accum` microbatches
 local num_steps = BERT_steps / 16;  // 16 is an extra reduction we're making
 
-local validate_every = 20000 * grad_accum;
+local validate_every = 10000;
 
 // --------------------------------------------------------------------------------
 // Optimizer settings
