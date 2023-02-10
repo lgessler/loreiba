@@ -154,6 +154,67 @@ class ReadTextOnlyConllu(Step):
         return DatasetDict({"train": train_dataset, "dev": dev_dataset})
 
 
+@Step.register("loreiba.data.conllu::read_conllu")
+class ReadConllu(Step):
+    DETERMINISTIC = True
+    CACHEABLE = True
+    FORMAT = DatasetsFormat()
+
+    def run(
+        self,
+        train_path: str,
+        dev_path: str,
+    ) -> DatasetDict:
+        features = datasets.Features(
+            {
+                "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "deps": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "feats": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "idx": Value(dtype="string", id=None),
+                "lemmas": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "misc": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "text": Value(dtype="string", id=None),
+                "tokens": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "upos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "xpos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+            }
+        )
+
+        def tokenlist_to_record(tl: conllu.TokenList):
+            # filter out supertokens and ellipsis tokens
+            metadata = tl.metadata
+            tl = [t for t in tl if isinstance(t["id"], int)]
+            return {
+                "idx": metadata["sent_id"],
+                "text": metadata["text"],
+                "tokens": [t["form"] for t in tl],
+                "lemmas": [t["lemma"] for t in tl],
+                "upos": [t["upos"] for t in tl],
+                "xpos": [t["xpos"] for t in tl],
+                "feats": [t["feats"] for t in tl],
+                "head": [t["head"] for t in tl],
+                "deprel": [t["deprel"] for t in tl],
+                "deps": [t["deps"] for t in tl],
+                "misc": [t["misc"] for t in tl],
+            }
+
+        def generator(filepath):
+            def inner():
+                with open(filepath, "r") as f:
+                    for sentence in conllu.parse_incr(f):
+                        yield tokenlist_to_record(sentence)
+
+            return inner
+
+        train_dataset = datasets.Dataset.from_generator(generator(train_path), features=features)
+        dev_dataset = datasets.Dataset.from_generator(generator(dev_path), features=features)
+        self.logger.info(f"First train sentence: {train_dataset[0]}")
+        self.logger.info(f"First dev sentence: {dev_dataset[0]}")
+
+        return DatasetDict({"train": train_dataset, "dev": dev_dataset})
+
+
 @Step.register("loreiba.data.conllu::read_ud_treebank")
 class ReadUDTreebank(Step):
     DETERMINISTIC = True
