@@ -1,6 +1,7 @@
 import math
 import os
 import sys
+
 import more_itertools as mit
 import stanza
 from stanza.utils.conll import CoNLL
@@ -14,7 +15,7 @@ def main():
         "use_gpu": True,
         "logging_level": "INFO",
         "tokenize_pretokenized": False,
-        "tokenize_no_ssplit": False,  # never allow sentence resegmentation
+        "tokenize_no_ssplit": False,
     }
     pipeline = stanza.Pipeline(**config)
 
@@ -22,7 +23,7 @@ def main():
     output_conllu_file = sys.argv[2]
     batch_size = 128
 
-    with open(text_file, 'r') as fin, open(output_conllu_file, 'w') as fout:
+    with open(text_file, "r") as fin, open(output_conllu_file, "w") as fout:
         chunks = list(mit.chunked(fin, batch_size))
         for chunk in tqdm(chunks):
             doc = pipeline("".join(chunk))
