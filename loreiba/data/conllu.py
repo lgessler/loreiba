@@ -14,6 +14,43 @@ from tango.common import Tqdm
 from tango.integrations.datasets import DatasetsFormat
 
 
+@Step.register("loreiba.data.conllu::streaming_read_text_only_conllu")
+class StreamingReadTextOnlyConllu(Step):
+    DETERMINISTIC = True
+    CACHEABLE = True
+    FORMAT = DatasetsFormat()
+
+    def run(
+        self,
+        shortcut: Optional[str] = None,
+        conllu_path_train: Optional[str] = None,
+        conllu_path_dev: Optional[str] = None,
+    ) -> DatasetDict:
+        def read_conllu(path):
+            def inner():
+                with open(path, "r") as f:
+                    i = 0
+                    for s in conllu.parse_incr(f):
+                        i += 1
+                        yield {"tokens": [t["form"] for t in s]}
+
+            return inner
+
+        train_dataset = datasets.Dataset.from_generator(
+            read_conllu(conllu_path_train),
+            features=datasets.Features({"tokens": datasets.Sequence(datasets.Value(dtype="string"))}),
+        )
+        dev_dataset = datasets.Dataset.from_generator(
+            read_conllu(conllu_path_dev),
+            features=datasets.Features({"tokens": datasets.Sequence(datasets.Value(dtype="string"))}),
+        )
+
+        self.logger.info(f"First train sentence: {train_dataset[0]}")
+        self.logger.info(f"First dev sentence: {dev_dataset[0]}")
+
+        return DatasetDict({"train": train_dataset, "dev": dev_dataset})
+
+
 @Step.register("loreiba.data.conllu::read_text_only_conllu")
 class ReadTextOnlyConllu(Step):
     DETERMINISTIC = True
