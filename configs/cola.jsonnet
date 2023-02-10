@@ -12,7 +12,7 @@ local model = {
 
 // our settings
 local batch_size = 32;
-local num_epochs = 10;
+local num_steps = 3000;
 
 // --------------------------------------------------------------------------------
 // Optimizer settings
@@ -26,11 +26,11 @@ local training_engine = {
         eps: 1e-8,
         weight_decay: 0.01
     },
-    //lr_scheduler: {
-    //    type: "transformers::cosine",
-    //    num_warmup_steps: validate_every,
-    //    num_training_steps: num_steps,
-    //},
+    lr_scheduler: {
+        type: "transformers::cosine",
+        num_warmup_steps: 500,
+        num_training_steps: num_steps,
+    },
     amp: false
 };
 local collate_fn = {
@@ -61,9 +61,9 @@ local val_dataloader = {
             training_engine: training_engine,
             log_every: 1,
             train_dataloader: train_dataloader,
-            train_epochs: num_epochs,
-            validate_every: 2679,
-            checkpoint_every: 2679,
+            train_steps: num_steps,
+            validate_every: num_steps,
+            checkpoint_every: num_steps,
             validation_split: "dev",
             validation_dataloader: val_dataloader,
             // val_metric_name: "perplexity",
