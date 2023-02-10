@@ -101,9 +101,9 @@ local BERT_total_instances = BERT_steps * BERT_batch_size;
 local batch_size = 32;
 local grad_accum = 8;
 local effective_batch_size = grad_accum * batch_size;
-// (BERT_batch_size / batch_size) is a coefficient we should multiply the BERT_steps by to ensure
-// we're getting through the same number of training instances
-local num_steps = BERT_steps * (BERT_batch_size / batch_size) / 16;  // 16 is an extra reduction we're making
+// We do not need to correct by (BERT_batch_size / batch_size) in order to ensure we're getting through the
+// same number of training instances because each step goes through `grad_accum` microbatches
+local num_steps = BERT_steps / 16;  // 16 is an extra reduction we're making
 
 local validate_every = 20000 * grad_accum;
 
