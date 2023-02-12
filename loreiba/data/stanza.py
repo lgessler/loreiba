@@ -64,7 +64,7 @@ class StanzaParseDataset(Step):
         def generator():
             chunks = list(mit.chunked(data["tokens"], batch_size))
             previous = 0
-            for chunk in Tqdm.tqdm(chunks, desc=f"Parsing split {split}..."):
+            for chunk in chunks:
                 inputs = [stanza.Document([], text=[sentence for sentence in chunk])]
                 output = pipeline(inputs)[0].to_dict()
                 for i, sentence in enumerate(output):
