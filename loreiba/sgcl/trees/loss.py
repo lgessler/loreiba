@@ -188,7 +188,8 @@ def assess_tree_sgcl_batched(
     negative_sim_rhs = (reshaped_negative_zs * negative_eij.unsqueeze(-1)).sum(-2)
 
     negative_cosines = F.cosine_similarity(root_zs.unsqueeze(-2), negative_sim_rhs, dim=-1)
-    top_negative_cosines = negative_cosines.topk(config.max_negatives_used_in_loss).values
+    k = min(config.max_negatives_used_in_loss, negative_cosines.shape[-1])
+    top_negative_cosines = negative_cosines.topk(k).values
     top_negative_mask = negative_mask[:, :, : config.max_negatives_used_in_loss]
 
     # Pack the positive with the negative cosines to prepare for softmaxing
