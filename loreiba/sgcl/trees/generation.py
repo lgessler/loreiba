@@ -1,4 +1,5 @@
 import random
+from itertools import combinations
 from typing import Any, Dict, List, Set
 
 import torch
@@ -43,63 +44,56 @@ def generate_negative_trees(
     adjacent_ids: Set[int],
 ) -> Dict[str, Any]:
     """
-    There are potentially many subtrees, but we only want up to `config.max_negative_per_subtree`.
-    Define a negative tree in terms of:
-      (1) a list of exactly one, two, or three nodes
-      (2) a list of adjacent nodes, equal in size to (1), which are the replacements for the leaf nodes in (1)
-    We could try to generate all possible negative combinations of the two and sample from that, but
-    for efficiency we're just going to sample and check for duplicates, breaking out of generation if we
-    get a collision `max_retry` times in a row.
+    Generate negative trees for a given subtree. Note that only up to
+    config.max_negative_per_subtree negative trees will be returned.
     """
     # A valid node for replacement is any one that is not the root of the subtree
     all_replacement_targets = tuple({k for k, v in subtree.items() if v is not None})
     # A valid replacement is an adjacent id
     all_replacement_values = tuple(adjacent_ids.copy())
-    # 3 possible limiting reagents for replacements: targets, values, and the limit (a hyperparameter)
-    sample_size = min(len(all_replacement_targets), len(all_replacement_values), config.max_replacements)
 
-    already_done = set()
     negatives = []
     retry_count = 0
-    while len(negatives) < config.max_negative_per_subtree:
-        random_sample_size = random.randint(1, sample_size)
-        targets = tuple(sorted(random.sample(all_replacement_targets, random_sample_size)))
-        values = tuple(sorted(random.sample(all_replacement_values, random_sample_size)))
 
-        # We've sampled something we already saw. Stop trying if we've exceeded the limit, else try again.
-        if (targets, values) in already_done:
-            retry_count += 1
-            if retry_count > config.max_retry:
-                break
-            else:
+    combined_replacement_targets = (
+        list(combinations(all_replacement_targets, 1))
+        + list(combinations(all_replacement_targets, 2))
+        + list(combinations(all_replacement_targets, 3))
+    )
+    combined_replacement_values = (
+        list(combinations(all_replacement_values, 1))
+        + list(combinations(all_replacement_values, 2))
+        + list(combinations(all_replacement_values, 3))
+    )
+
+    for targets in combined_replacement_targets:
+        for values in combined_replacement_values:
+            # First, copy the subtree
+            negative_tree = subtree.copy()
+            for target, value in zip(targets, values):
+                # Retrieve the subtree to be removed
+                target_subtree = all_subtrees[target]
+                # Note the head of the subtree we're deleting
+                subtree_head_id = [k for k, v in target_subtree.items() if v is None][0]
+                # Remove the target: find all the token IDs in the subtree and remove them
+                for k in target_subtree.keys():
+                    # We might have already removed the subtree in a previous iteration, so check first
+                    if k in negative_tree:
+                        del negative_tree[k]
+                # Retrieve the subtree to be spliced into the negative tree
+                replacement_subtree = all_subtrees[value]
+                for token_id, head_id in replacement_subtree.items():
+                    # if we found the root of the replacement subtree, make its head the original subtree's head
+                    if head_id is None:
+                        head_id = subtree_head_id
+                    negative_tree[token_id] = head_id
+            # Check the difference in sizes and reject if it's beyond our tolerance (defaults to 1)
+            if abs(len(negative_tree) - len(subtree)) > config.max_node_count_difference:
+                retry_count += 1
                 continue
-        # This is new--record that we saw it
-        already_done.add((targets, values))
+            negatives.append(negative_tree)
 
-        # First, copy the subtree
-        negative_tree = subtree.copy()
-        for target, value in zip(targets, values):
-            # Retrieve the subtree to be removed
-            target_subtree = all_subtrees[target]
-            # Note the head of the subtree we're deleting
-            subtree_head_id = [k for k, v in target_subtree.items() if v is None][0]
-            # Remove the target: find all the token IDs in the subtree and remove them
-            for k in target_subtree.keys():
-                # We might have already removed the subtree in a previous iteration, so check first
-                if k in negative_tree:
-                    del negative_tree[k]
-            # Retrieve the subtree to be spliced into the negative tree
-            replacement_subtree = all_subtrees[value]
-            for token_id, head_id in replacement_subtree.items():
-                # if we found the root of the replacement subtree, make its head the original subtree's head
-                if head_id is None:
-                    head_id = subtree_head_id
-                negative_tree[token_id] = head_id
-        # Check the difference in sizes and reject if it's beyond our tolerance (defaults to 1)
-        if abs(len(negative_tree) - len(subtree)) > config.max_node_count_difference:
-            retry_count += 1
-            continue
-        negatives.append(negative_tree)
+    negatives = list(random.sample(negatives, min(config.max_negative_per_subtree, len(negatives))))
 
     return {
         "root_id": root_id,
