@@ -32,12 +32,9 @@ local bert_config = {
 local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
 local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
-    subtree_sampling_method: {type: "random", max_number: 3},
-    max_negative_per_subtree: 10
+    subtree_sampling_method: {type: "all"},
 };
-local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
-    max_subtrees_per_sentence: 5,
-};
+local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {};
 local parser = {
     input_dim: hidden_size,
     num_layers: num_layers + 1,
