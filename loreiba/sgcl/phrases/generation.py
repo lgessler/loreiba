@@ -54,14 +54,21 @@ def compute_phrase_set(
         if len(tokens_not_in_phrase) == 0:
             continue
 
+        # Positive instance: a randomly sampled token from the subtree
         positive_set = set(subtree.keys())
         positive_tid = random.sample(tuple(positive_set), 1)[0]
         positive = t2wp[positive_tid]
+
+        # Query instance: another randomly sampled token from the subtree, distinct from positive
         query_set = set(subtree.keys()) - {positive_tid}
         query = t2wp[random.sample(tuple(query_set), 1)[0]]
+
+        # Negatives: randomly sampled from outside the subtree
         negatives = [
             t2wp[i]
-            for i in random.sample(tokens_not_in_phrase, min(config.negative_per_positive, len(tokens_not_in_phrase)))
+            for i in random.sample(
+                tokens_not_in_phrase, min(config.max_negative_per_positive, len(tokens_not_in_phrase))
+            )
         ]
         phrase_set.append({"query": query, "positive": positive, "negatives": negatives})
     return phrase_set
