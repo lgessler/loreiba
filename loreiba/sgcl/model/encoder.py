@@ -6,15 +6,8 @@ import torch.nn.functional as F
 from tango.common import Registrable
 from tango.integrations.transformers import Tokenizer
 from torch import nn
-from transformers import (
-    AutoModel,
-    BertConfig,
-    BertModel,
-    ElectraConfig,
-    ElectraModel,
-    RobertaForMaskedLM,
-    RobertaTokenizer,
-)
+from transformers import (AutoModel, BertConfig, BertModel, ElectraConfig, ElectraModel, RobertaForMaskedLM,
+                          RobertaTokenizer)
 from transformers.activations import GELUActivation, gelu, get_activation
 
 from loreiba.common import dill_dump, dill_load
