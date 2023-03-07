@@ -119,6 +119,9 @@ class SGCLModel(Model):
         if self.parser is not None:
             # TODO: use predicted xpos?
             trimmed = [_remove_cls_and_sep(h_layer, token_spans) for h_layer in encoder_outputs.hidden_states]
+            # do not backprop into transformer
+            trimmed = [(reprs.detach().clone(), word_spans.detach().clone()) for reprs, word_spans in trimmed]
+
             parser_output = self.parser.forward(
                 [x[0] for x in trimmed], trimmed[-1][1], xpos, tree_is_gold, orig_deprel, orig_head
             )
