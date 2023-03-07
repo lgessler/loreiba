@@ -5,13 +5,13 @@ from datasets import load_dataset
 
 
 def main():
-    wikitext = load_dataset("wikitext", "wikitext-103-raw-v1")
+    wikipedia = load_dataset("wikipedia", "20220301.en")
     bookcorpus = load_dataset("bookcorpus")
 
     os.makedirs("data/bert/train")
     os.makedirs("data/bert/dev")
 
-    train1 = wikitext["train"]["text"]
+    train1 = wikipedia["train"]["text"]
     train2 = bookcorpus["train"]["text"]
     dev = wikitext["validation"]["text"]
 
@@ -20,8 +20,8 @@ def main():
     train1 = [x.strip() for x in train1 if suitable(x)]
     train2 = [x.strip() for x in train2 if suitable(x)]
     # Downsample a bit so we have around 2.5B tokens
-    train2 = train2[: math.floor(len(train2) * 0.45)]
-    print(sum(len(s) for s in train1) + sum(len(s) for s in train2))
+    print(sum(len(s.split(" ")) for s in train1))
+    print(sum(len(s.split(" ")) for s in train2))
     dev = [x.strip() for x in dev if suitable(x)]
 
     def write_bare_text(path, xs):
