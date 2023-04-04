@@ -73,6 +73,18 @@ def extend_tree_with_subword_edges(output):
     output["dependency_token_spans"] = new_token_spans
     output["orig_head"] = orig_head
     output["orig_deprel"] = orig_deprel
+    output["head"] = heads
+    output["deprel"] = deprel
+
+    if len(output["input_ids"]) - 2 != len(output["head"]):
+        print("token_spans", len(output["token_spans"]), output["token_spans"])
+        print("dependency_token_spans", len(output["dependency_token_spans"]), output["dependency_token_spans"])
+        print("head", len(output["head"]), output["head"])
+        print("orig_head", len(output["orig_head"]), output["orig_head"])
+        # with open("workspace/models/coptic_mx_hidden_size-128_intermediate_size-512_max_position_embeddings-512_num_attention_heads-8_num_hidden_layers-3/vocab.txt", "r") as f:
+        #    td = {i: t for i, t in enumerate(f.read().strip().split("\n"))}
+        print("input_ids", len(output["input_ids"]), output["input_ids"])
+        raise ValueError("length of head should be equal to length of input_ids - 2")
 
 
 @Step.register("loreiba.data.postprocess::expand_trees_with_subword_edges")
