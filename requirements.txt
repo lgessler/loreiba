@@ -1,15 +1,14 @@
 # core packages
-transformers==4.24.0
+# Use our fork for SLA
+git+https://github.com/lgessler/transformers.git@loreiba-4.24.0
+#transformers==4.24.0
 torch==1.11.0
 torchmetrics==0.10.3
 tokenizers==0.13.2
 datasets==2.7.1
-ai2-tango[torch,flax,transformers]==1.0.2
+ai2-tango[torch,flax,wandb,transformers]==1.2.0
 allennlp-light==1.0.0
 stanza==1.4.2
-
-# infonce loss function
-info-nce-pytorch==0.1.4
 
 # other
 conllu==4.5.2
@@ -17,3 +16,4 @@ black==22.10.0
 isort==5.10.1
 pygithub==1.57
 psutil==5.9.4
+scikit-learn==1.2.2

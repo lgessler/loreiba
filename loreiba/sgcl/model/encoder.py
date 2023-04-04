@@ -85,7 +85,7 @@ class BertEncoder(SgclEncoder):
         self.head = TiedRobertaLMHead(config, self.encoder.embeddings.word_embeddings.weight)
 
     def forward(self, *args, **kwargs):
-        return self.encoder(*args, **kwargs)
+        return self.encoder(*args, return_dict=True, **kwargs)
 
     def compute_loss(self, input_ids, attention_mask, token_type_ids, last_encoder_state, labels):
         preds = self.head(last_encoder_state)

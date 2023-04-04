@@ -3,8 +3,9 @@
 // --------------------------------------------------------------------------------
 local language = std.extVar("LANGUAGE");
 local experiment_name = std.extVar("NAME");
-local use_phrase = std.extVar("PHRASE");
-local use_tree = std.extVar("TREE");
+local use_phrase = std.parseInt(std.extVar("PHRASE")) != 0;
+local use_tree = std.parseInt(std.extVar("TREE")) != 0;
+local use_sla = std.parseInt(std.extVar("SLA")) != 0;
 local language_code_index = import 'lib/language_code.libsonnet';
 local stanza_do_not_retokenize = import 'lib/stanza_do_not_retokenize.libsonnet';
 local stanza_no_mwt = import 'lib/stanza_no_mwt.libsonnet';
@@ -31,10 +32,11 @@ local bert_config = {
 };
 local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
 local tokenizer = { pretrained_model_name_or_path: model_path };
-local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
+local tree_sgcl_config = if !use_tree then null else {
     subtree_sampling_method: {type: "all"},
 };
-local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {};
+local phrase_sgcl_config = if !use_phrase then null else {};
+local sla_config = if !use_sla then null else {max_distance: 5};
 local parser = {
     input_dim: hidden_size,
     num_layers: num_layers + 1,
@@ -71,6 +73,7 @@ local model = {
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
+    sla_config: sla_config,
     encoder: {
         type: "bert",
         tokenizer: tokenizer,
@@ -127,8 +130,14 @@ local training_engine = {
 local collate_fn = {
     type: "loreiba.sgcl.collator::collator",
     tokenizer: tokenizer,
+    // If these configs are included, their relevant structures will be made using the STATIC
+    // parses that were made during data preprocessing.
+    // If these configs are NOT included and the `model` variable DOES have these configs, then
+    // their relevant structures will be made using the DYNAMIC parses that are being created
+    // by the model's built-in UD parser.
     tree_config: tree_sgcl_config,
     phrase_config: phrase_sgcl_config,
+    sla_config: sla_config,
     // whether to replace [MASK] with 10% UNK and 10% random. should be true for electra, false for bert
     mask_only: false,
 };

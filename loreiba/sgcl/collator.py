@@ -9,6 +9,7 @@ from transformers import DataCollatorForLanguageModeling
 
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 from loreiba.sgcl.phrases.generation import generate_phrase_sets
+from loreiba.sgcl.sla import SlaConfig, generate_sla_mask
 from loreiba.sgcl.trees.common import TreeSgclConfig
 from loreiba.sgcl.trees.generation import generate_subtrees
 
@@ -57,6 +58,7 @@ class SgclDataCollator(DataCollator):
         span_field: str = "token_spans",
         tree_config: Optional[TreeSgclConfig] = None,
         phrase_config: Optional[PhraseSgclConfig] = None,
+        sla_config: Optional[SlaConfig] = None,
     ):
         tokenizer = tokenizer.construct()
         self.tokenizer = tokenizer
@@ -69,9 +71,9 @@ class SgclDataCollator(DataCollator):
         self.keys = None
         self.tree_config = tree_config
         self.phrase_config = phrase_config
+        self.sla_config = sla_config
 
     def __call__(self, batch) -> Dict[str, Any]:
-        torch.cuda.empty_cache()
         if self.keys is None:
             self.keys = list(batch[0].keys())
 
@@ -103,5 +105,7 @@ class SgclDataCollator(DataCollator):
             output["phrase_sets"] = generate_phrase_sets(
                 self.phrase_config, output["head"], output["dependency_token_spans"]
             )
+        if self.sla_config is not None:
+            output["dep_att_mask"] = generate_sla_mask(self.sla_config, output["head"])
 
         return output

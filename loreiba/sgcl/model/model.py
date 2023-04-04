@@ -17,6 +17,7 @@ from loreiba.sgcl.model.xpos import XposHead
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 from loreiba.sgcl.phrases.generation import generate_phrase_sets
 from loreiba.sgcl.phrases.loss import phrase_guided_loss
+from loreiba.sgcl.sla import SlaConfig, generate_sla_mask
 from loreiba.sgcl.trees.common import TreeSgclConfig
 from loreiba.sgcl.trees.generation import generate_subtrees
 from loreiba.sgcl.trees.loss import syntax_tree_guided_loss
@@ -54,6 +55,7 @@ class SGCLModel(Model):
         counts: Dict[str, int],
         tree_sgcl_config: Optional[TreeSgclConfig] = None,
         phrase_sgcl_config: Optional[PhraseSgclConfig] = None,
+        sla_config: Optional[SlaConfig] = None,
         xpos_tagging: bool = True,
         parser: Optional[BiaffineDependencyParser] = None,
         *args,
@@ -85,6 +87,7 @@ class SGCLModel(Model):
 
         self.tree_sgcl_config = tree_sgcl_config
         self.phrase_sgcl_config = phrase_sgcl_config
+        self.sla_config = sla_config
 
     def forward(
         self,
@@ -102,15 +105,19 @@ class SGCLModel(Model):
         labels=None,
         tree_sets=None,
         phrase_sets=None,
+        dep_att_mask=None,
     ):
         tree_is_gold = tree_is_gold.squeeze(-1)
         # Encode the inputs
+        if self.sla_config is not None and dep_att_mask is None:
+            dep_att_mask = generate_sla_mask(self.sla_config, head)
         encoder_outputs: BaseModelOutputWithPoolingAndCrossAttentions = self.encoder(
             input_ids=input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             output_hidden_states=True,
             output_attentions=True,
+            dep_att_mask=dep_att_mask,
         )
         hidden_states = encoder_outputs.hidden_states[1:]
         attentions = encoder_outputs.attentions
