@@ -19,7 +19,7 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // --------------------------------------------------------------------------------
 local max_length = 512;
 
-local FROM_PRETRAINED = true;
+local FROM_PRETRAINED = false;
 local hidden_size = 768;
 local num_layers = 6;
 local bert_config = {
@@ -48,8 +48,9 @@ local model = {
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
     encoder: {
-        type: "pretrained_roberta",
-        model_path: "roberta-base"
+        type: "bert",
+        tokenizer: tokenizer,
+        bert_config: bert_config,
     }
 };
 
