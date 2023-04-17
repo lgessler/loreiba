@@ -3,8 +3,9 @@
 // --------------------------------------------------------------------------------
 local language = std.extVar("LANGUAGE");
 local experiment_name = std.extVar("NAME");
-local use_phrase = std.extVar("PHRASE");
-local use_tree = std.extVar("TREE");
+local use_phrase = std.parseInt(std.extVar("PHRASE")) != 0;
+local use_tree = std.parseInt(std.extVar("TREE")) != 0;
+local use_sla = std.parseInt(std.extVar("SLA")) != 0;
 local language_code_index = import 'lib/language_code.libsonnet';
 local stanza_do_not_retokenize = import 'lib/stanza_do_not_retokenize.libsonnet';
 local stanza_no_mwt = import 'lib/stanza_no_mwt.libsonnet';
@@ -20,7 +21,7 @@ local max_length = 512;
 
 local FROM_PRETRAINED = true;
 local hidden_size = 768;
-local num_layers = 12;
+local num_layers = 6;
 local bert_config = {
     hidden_size: hidden_size,
     num_hidden_layers: num_layers,
@@ -29,14 +30,14 @@ local bert_config = {
     max_position_embeddings: max_length,
 };
 local model_path = "./workspace/models/" + language + "_" + experiment_name + "_"+ stringifyObject(bert_config);
-local tokenizer = { pretrained_model_name_or_path: "roberta-base" };
-local tree_sgcl_config = if std.parseInt(use_tree) != 1 then null else {
-    subtree_sampling_method: {type: "random", max_number: 3},
-    max_negative_per_subtree: 10
+local tokenizer = { pretrained_model_name_or_path: model_path };
+local tree_sgcl_config = if !use_tree then null else {
+    subtree_sampling_method: {type: "all"},
 };
-local phrase_sgcl_config = if std.parseInt(use_phrase) != 1 then null else {
+local phrase_sgcl_config = if !use_phrase then null else {
     max_subtrees_per_sentence: 5,
 };
+local sla_config = if !use_sla then null else {max_distance: 5};
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
     parser: null,
@@ -73,7 +74,7 @@ local grad_accum = 64;
 local effective_batch_size = grad_accum * batch_size;
 // We do not need to correct by (BERT_batch_size / batch_size) in order to ensure we're getting through the
 // same number of training instances because each step goes through `grad_accum` microbatches
-local num_steps = 300000;
+local num_steps = 500000;
 
 local validate_every = 10000;
 
@@ -102,6 +103,7 @@ local collate_fn = {
     tokenizer: tokenizer,
     tree_config: tree_sgcl_config,
     phrase_config: phrase_sgcl_config,
+    sla_config: sla_config,
     // whether to replace [MASK] with 10% UNK and 10% random. should be true for electra, false for bert
     mask_only: false,
 };
