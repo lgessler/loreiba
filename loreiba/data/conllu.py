@@ -175,21 +175,28 @@ class ReadConllu(Step):
         )
 
         def tokenlist_to_record(tl: conllu.TokenList):
-            # filter out supertokens and ellipsis tokens
-            metadata = tl.metadata
-            tl = [t for t in tl if isinstance(t["id"], int)]
+            tokens = []
+            xpos = []
+            head = []
+            deprel = []
+            for t in tl:
+                if isinstance(t["id"], int):
+                    tokens.append(t["form"])
+                    xpos.append(t["xpos"])
+                    head.append(t["head"])
+                    deprel.append(t["deprel"])
             return {
-                "tokens": [t["form"] for t in tl],
-                "xpos": [t["xpos"] for t in tl],
-                "head": [t["head"] for t in tl],
-                "deprel": [t["deprel"] for t in tl],
+                "tokens": tokens,
+                "xpos": xpos,
+                "head": head,
+                "deprel": deprel,
             }
 
         def generator(filepath):
             def inner():
                 with open(filepath, "r") as f:
-                    for sentence in conllu.parse_incr(f):
-                        yield tokenlist_to_record(sentence)
+                    for x in conllu.parse_incr(f):
+                        yield tokenlist_to_record(x)
 
             return inner
 
