@@ -81,22 +81,22 @@ class TokenizePlus(Step):
     def _process_split(
         self, split: Dataset, tokenizer: Tokenizer, max_length: Optional[int], token_column: str
     ) -> Dataset:
-        output = []
-        for d in split:
-            sentence = d[token_column]
-            wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer, max_length)
-            flattened = []
-            for pair in token_spans:
-                flattened.extend(pair)
-            d = {
-                **d,
-                "input_ids": wp_ids,
-                "token_spans": flattened,
-                token_column: sentence[: len(token_spans) - 2],
-                "attention_mask": [1] * len(wp_ids),
-                "token_type_ids": [0] * len(wp_ids),
-            }
-            output.append(d)
+        def inner():
+            for d in split:
+                sentence = d[token_column]
+                wp_ids, token_spans = self.intra_word_tokenize(sentence, tokenizer, max_length)
+                flattened = []
+                for pair in token_spans:
+                    flattened.extend(pair)
+                d = {
+                    **d,
+                    "input_ids": wp_ids,
+                    "token_spans": flattened,
+                    token_column: sentence[: len(token_spans) - 2],
+                    "attention_mask": [1] * len(wp_ids),
+                    "token_type_ids": [0] * len(wp_ids),
+                }
+                yield d
 
         features = datasets.Features(
             {
@@ -108,7 +108,7 @@ class TokenizePlus(Step):
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
-        return datasets.Dataset.from_list(output, features=features)
+        return datasets.Dataset.from_generator(inner, features=features)
 
     def run(
         self,
