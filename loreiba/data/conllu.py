@@ -207,8 +207,8 @@ class ReadConllu(Step):
 
             return inner
 
-        train_dataset = datasets.Dataset.from_generator(generator(train_path), features=features)
-        dev_dataset = datasets.Dataset.from_generator(generator(dev_path), features=features)
+        train_dataset = datasets.Dataset.from_generator(generator(train_path), features=features, streaming=True)
+        dev_dataset = datasets.Dataset.from_generator(generator(dev_path), features=features, streaming=True)
         self.logger.info(f"First train sentence: {train_dataset[0]}")
         self.logger.info(f"First dev sentence: {dev_dataset[0]}")
 

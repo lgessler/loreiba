@@ -108,7 +108,7 @@ class TokenizePlus(Step):
                 "token_type_ids": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
-        return datasets.Dataset.from_generator(inner, features=features)
+        return datasets.Dataset.from_generator(inner, features=features, streaming=True)
 
     def run(
         self,

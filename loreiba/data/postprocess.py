@@ -94,13 +94,11 @@ class ExpandTreesWithSubwordEdges(Step):
     FORMAT = DatasetsFormat()
 
     def process_split(self, split, data):
-        insts = []
-        for d in data:
-            extend_tree_with_subword_edges(d)
-            insts.append(d)
+        def inner():
+            for d in data:
+                yield extend_tree_with_subword_edges(d)
 
-        return datasets.Dataset.from_list(
-            insts,
+        features = (
             datasets.Features(
                 {
                     **data.features,
@@ -109,6 +107,12 @@ class ExpandTreesWithSubwordEdges(Step):
                     "dependency_token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
                 }
             ),
+        )
+
+        return datasets.Dataset.from_generator(
+            inner,
+            features=features,
+            streaming=True,
         )
 
     def run(self, dataset: DatasetDict) -> DatasetDict:
