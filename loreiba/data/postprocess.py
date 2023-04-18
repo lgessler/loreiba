@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import sys
@@ -12,6 +13,8 @@ from tango.integrations.datasets import DatasetsFormat
 
 from loreiba.common import dill_dump, dill_load
 
+logger = logging.getLogger(__name__)
+
 
 def extend_tree_with_subword_edges(output):
     token_spans = output["token_spans"]
@@ -21,22 +24,20 @@ def extend_tree_with_subword_edges(output):
     deprel = output["deprel"]
     orig_head = head.copy()
     orig_deprel = deprel.copy()
-
     # Map from old token IDs to new token IDs after subword expansions
     id_map = {}
     running_diff = 0
-    assert len(token_spans) // 2 == len(head) + 2, (len(token_spans) // 2, len(head))
+    if len(token_spans) // 2 != len(head) + 2:
+        return None
     for token_id in range(0, len(token_spans) // 2):
         id_map[token_id] = token_id + running_diff
         b, e = token_spans[token_id * 2 : (token_id + 1) * 2]
         running_diff += e - b
-
     # Note how many subwords have been added so far
     new_token_spans = []
     for token_id in range(0, len(token_spans) // 2):
         # Inclusive indices of the subwords that the original token corresponds to
         b, e = token_spans[token_id * 2 : (token_id + 1) * 2]
-
         # If not a special token (we're assuming there are 2 on either end of the sequence),
         # replace the head value of the current token with the mapped value
         if token_id != 0 and token_id != ((len(token_spans) // 2) - 1):
@@ -59,7 +60,6 @@ def extend_tree_with_subword_edges(output):
                 new_token_spans.append(b + j)
                 head.insert(first_subword_index + j, id_map[token_id])
                 deprel.insert(first_subword_index + j, "subword")
-
     heads = [int(x) for x in head]
     for h in heads:
         current = h
@@ -69,7 +69,6 @@ def extend_tree_with_subword_edges(output):
                 raise Exception(f"Cycle detected!\n{orig_head}\n{orig_deprel}\n{token_spans}\n\n{head}\n{deprel}")
             seen.add(current)
             current = heads[current - 1]
-
     output["dependency_token_spans"] = new_token_spans
     output["orig_head"] = orig_head
     output["orig_deprel"] = orig_deprel
@@ -96,8 +95,11 @@ class ExpandTreesWithSubwordEdges(Step):
     def process_split(self, split, data):
         def inner():
             for d in data:
-                extend_tree_with_subword_edges(d)
-                yield d
+                res = extend_tree_with_subword_edges(d)
+                if res is None:
+                    logger.warning(f"Discarding instance because extending with subword edges failed: {d}")
+                else:
+                    yield res
 
         features = datasets.Features(
             {
