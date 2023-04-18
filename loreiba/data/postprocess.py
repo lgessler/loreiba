@@ -94,10 +94,17 @@ class ExpandTreesWithSubwordEdges(Step):
 
     def process_split(self, split, data):
         def inner():
+            total = 0
+            discarded = 0
             for d in data:
                 res = extend_tree_with_subword_edges(d)
+                total += 1
                 if res is None:
-                    logger.warning(f"Discarding instance because extending with subword edges failed: {d}")
+                    discarded += 1
+                    logger.warning(
+                        f"Discarding instance because extending with subword edges failed."
+                        f" Total discarded: {discarded}/{total}"
+                    )
                 else:
                     yield res
 
