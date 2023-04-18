@@ -102,12 +102,14 @@ def generate_negative_trees(
     }
 
 
-def generate_subtrees(config: TreeSgclConfig, head: torch.LongTensor) -> List[List[Dict[str, Any]]]:
+def generate_subtrees(
+    config: TreeSgclConfig, head: torch.LongTensor, head_length: torch.LongTensor
+) -> List[List[Dict[str, Any]]]:
     """
     Generate pairs of positive and negative trees
     """
     # Map from IDs to heads. Note that this is all 1-indexed, with 0 being the dummy ROOT node.
-    head_map = get_head_map(head)
+    head_map = get_head_map(head, head_length)
 
     # get eligible subtrees for each sequence
     all_subtree_lists = [get_all_subtrees(s) for s in head_map]

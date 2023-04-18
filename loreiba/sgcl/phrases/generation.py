@@ -75,11 +75,11 @@ def compute_phrase_set(
 
 
 def generate_phrase_sets(
-    config: PhraseSgclConfig, head: torch.LongTensor, token_spans: torch.Tensor
+    config: PhraseSgclConfig, head: torch.LongTensor, token_spans: torch.Tensor, head_length: torch.LongTensor
 ) -> List[List[Dict[str, Any]]]:
     # dill_dump(head, '/tmp/head')
     # dill_dump(token_spans, '/tmp/token_spans')
-    head_maps = get_head_map(head)
+    head_maps = get_head_map(head, head_length)
     token_to_head_wordpiece_maps = [get_token_to_head_wordpiece_map(spans) for spans in token_spans]
     subtrees = [get_all_subtrees(head_map) for head_map in head_maps]
     phrase_sets = [

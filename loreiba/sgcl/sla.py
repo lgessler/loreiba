@@ -43,21 +43,17 @@ def ids_in_range(head_map: Dict[int, int | None], begin: int, max_distance: int)
     return visited
 
 
-def generate_sla_mask(config: SlaConfig, head: torch.LongTensor) -> torch.LongTensor:
+def generate_sla_mask(config: SlaConfig, head: torch.LongTensor, head_length: torch.LongTensor) -> torch.LongTensor:
     """
-    Given head of [batch_size, seq_len] s.t.:
-     - [CLS] and [SEP] are NOT present
-     - the root of the sequence represented in head is equal to 0
+    Given head of [batch_size, seq_len] s.t. [CLS] and [SEP] are NOT present
     produce [batch_size, seq_len + 2, seq_len + 2] (we expand to account for [CLS] and [SEP])
     such that [b, i, j] is 1 if token i may attend to token j, and 0 otherwise. Note that
     whenever j corresponds to [CLS] or [SEP] or when i = j, [b, i, j] is always 1.
     """
-    batch_size, max_seq_len = head.shape
+    batch_size, heads = head.shape
     device = head.device
-    zero_col = torch.zeros((batch_size, 1), device=device, dtype=torch.long)
-    head = torch.concat((zero_col, head, zero_col), dim=1)
-    head_maps = get_head_map(head[:, 1:])
-    att_mask: torch.LongTensor = torch.zeros(head.shape + (head.shape[1],), dtype=torch.long, device=head.device)
+    head_maps = get_head_map(head, head_length)
+    att_mask: torch.LongTensor = torch.zeros((batch_size,) + ((heads + 2,) * 2), dtype=torch.long, device=device)
     for b, head_map in enumerate(head_maps):
         for i in range(1, head.shape[1] - 1):
             in_range = ids_in_range(head_map, i, config.max_distance)
@@ -65,14 +61,14 @@ def generate_sla_mask(config: SlaConfig, head: torch.LongTensor) -> torch.LongTe
                 att_mask[b, i, j] = 1
     # Ensure [CLS] is not masked
     att_mask[:, :, 0] = 1
-    non_packed_seq_lens = (head != 0).sum(1) + 2
+    non_packed_seq_lens = head_length + 2
     for i, l in enumerate(non_packed_seq_lens):
         # Allow [CLS] to attend to all tokens. (This is a point of departure vs. the original impl.)
         att_mask[i, 0, :l] = 1
         # Ensure [SEP] is not masked
-        att_mask[i, :, l] = 1
+        att_mask[i, :, l - 1] = 1
         # Mask out rows beyond sequence length
-        att_mask[i, l + 1 :] = 0
+        att_mask[i, l - 1 :] = 0
     return att_mask
 
 
@@ -86,8 +82,9 @@ def __tmp():
         ],
         dtype=torch.long,
     )
+    head_length = torch.tensor([5, 4])
 
-    sla_mask = generate_sla_mask(config, head)
+    sla_mask = generate_sla_mask(config, head, head_length)
     sla_mask[1, 0].sum()
     (head[1] != 0).sum()
     sla_mask[0, 1:-1, 1:-1]

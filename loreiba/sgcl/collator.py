@@ -7,6 +7,7 @@ from tango.integrations.transformers import Tokenizer
 from torch.nn.utils.rnn import pad_sequence
 from transformers import DataCollatorForLanguageModeling
 
+from loreiba.common import dill_dump, dill_load
 from loreiba.sgcl.phrases.common import PhraseSgclConfig
 from loreiba.sgcl.phrases.generation import generate_phrase_sets
 from loreiba.sgcl.sla import SlaConfig, generate_sla_mask
@@ -98,14 +99,15 @@ class SgclDataCollator(DataCollator):
                     else:
                         _, labels = torch_mask_tokens(output[k], self.tokenizer)
                 output["labels"] = labels
+        head_length = torch.LongTensor([len(batch[i]["head"]) for i in range(len(batch))])
 
         if self.tree_config is not None:
-            output["tree_sets"] = generate_subtrees(self.tree_config, output["head"])
+            output["tree_sets"] = generate_subtrees(self.tree_config, output["head"], head_length)
         if self.phrase_config is not None:
             output["phrase_sets"] = generate_phrase_sets(
-                self.phrase_config, output["head"], output["dependency_token_spans"]
+                self.phrase_config, output["head"], output["dependency_token_spans"], head_length
             )
         if self.sla_config is not None:
-            output["dep_att_mask"] = generate_sla_mask(self.sla_config, output["head"])
+            output["dep_att_mask"] = generate_sla_mask(self.sla_config, output["head"], head_length)
 
         return output

@@ -3,12 +3,9 @@ from typing import Dict, List, Set
 import torch
 
 
-def get_head_map(head: torch.LongTensor) -> List[Dict[int, int | None]]:
-    # Count number of tokens in the tree: find nonzero heads to account for 0-padding, and add one
-    # to account for the fact that 0:root is labeled with a head = 0.
-    token_counts = (head != 0).sum(1) + 1
+def get_head_map(head: torch.LongTensor, head_length: torch.LongTensor) -> List[Dict[int, int | None]]:
     # split the batched head tensor into one tensor per input sequence, with padding removed
-    padless_head = [head[i, : token_counts[i]] for i, x in enumerate(token_counts)]
+    padless_head = [head[i, :hl] for i, hl in enumerate(head_length)]
     # Map from IDs to heads. Note that this is all 1-indexed, with 0 being the dummy ROOT node.
     head_map = [{0: None, **{i + 1: h.item() for i, h in enumerate(heads)}} for heads in padless_head]
     return head_map
