@@ -5,7 +5,7 @@ import sys
 import datasets
 import more_itertools as mit
 import stanza
-from datasets import DatasetDict, Sequence, Value
+from datasets import Dataset, DatasetDict, Sequence, Value
 from tango import Step
 from tango.common import Tqdm
 from tango.integrations.datasets import DatasetsFormat
@@ -93,20 +93,18 @@ class ExpandTreesWithSubwordEdges(Step):
     CACHEABLE = True
     FORMAT = DatasetsFormat()
 
-    def process_split(self, split, data):
+    def process_split(self, split, data: Dataset):
         def inner():
             for d in data:
                 yield extend_tree_with_subword_edges(d)
 
-        features = (
-            datasets.Features(
-                {
-                    **data.features,
-                    "orig_head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                    "orig_deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                    "dependency_token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
-                }
-            ),
+        features = datasets.Features(
+            {
+                **data.features,
+                "orig_head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "orig_deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "dependency_token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
+            }
         )
 
         return datasets.Dataset.from_generator(inner, features=features)
