@@ -36,7 +36,7 @@ local tree_sgcl_config = if !use_tree then null else {
     subtree_sampling_method: {type: "all"},
 };
 local phrase_sgcl_config = if !use_phrase then null else {};
-local sla_config = if !use_sla then null else {max_distance: 5};
+local sla_config = if !use_sla then null else {max_distance: 4};
 local parser = {
     input_dim: hidden_size,
     num_layers: num_layers + 1,

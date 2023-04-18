@@ -37,7 +37,7 @@ local tree_sgcl_config = if !use_tree then null else {
 local phrase_sgcl_config = if !use_phrase then null else {
     max_subtrees_per_sentence: 5,
 };
-local sla_config = if !use_sla then null else {max_distance: 5};
+local sla_config = if !use_sla then null else {max_distance: 4};
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
     parser: null,
