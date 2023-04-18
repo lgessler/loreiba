@@ -19,6 +19,8 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // --------------------------------------------------------------------------------
 local max_length = 512;
 
+local use_parser = false;
+local use_xpos = false;
 local FROM_PRETRAINED = false;
 local hidden_size = 768;
 local num_layers = 6;
@@ -40,8 +42,8 @@ local phrase_sgcl_config = if !use_phrase then null else {
 local sla_config = if !use_sla then null else {max_distance: 4};
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
-    parser: null,
-    xpos_tagging: false,
+    parser: if use_parser then parser else null,
+    xpos_tagging: use_xpos,
     tokenizer: tokenizer,
     counts: { "type": "ref", "ref": "counts" },
     model_output_path: model_path,
@@ -129,12 +131,6 @@ local val_dataloader = {
 
 {
     steps: {
-        // Read raw data
-        treebank_data: {
-            type: "loreiba.data.conllu::read_ud_treebank",
-            shortcut: language,
-            tag: "r2.11"  // Use UD treebanks from release 2.11
-        },
         parsed_text_data: {
             type: "loreiba.data.conllu::read_conllu",
             train_path: "data/bert/train/train.conllu",
@@ -150,13 +146,6 @@ local val_dataloader = {
         },
 
         // Tokenize input data
-        tokenized_treebank_data: {
-            type: "loreiba.data.tokenize::tokenize_plus",
-            dataset: { type: "ref", ref: "treebank_data" },
-            max_length: max_length,
-            tokenizer: tokenizer,
-            step_extra_dependencies: if FROM_PRETRAINED then [] else [ {type: "ref", "ref": "tokenizer" } ]
-        },
         tokenized_text_data: {
             type: "loreiba.data.tokenize::tokenize_plus",
             dataset: { "type": "ref", "ref": "parsed_text_data" },
@@ -166,10 +155,6 @@ local val_dataloader = {
         },
 
         // Postprocess
-        postprocessed_treebank_data: {
-            type: "loreiba.data.postprocess::expand_trees_with_subword_edges",
-            dataset: { type: "ref", ref: "tokenized_treebank_data" }
-        },
         postprocessed_text_data: {
             type: "loreiba.data.postprocess::expand_trees_with_subword_edges",
             dataset: { type: "ref", ref: "tokenized_text_data" }
@@ -179,7 +164,6 @@ local val_dataloader = {
         model_inputs: {
             type: "loreiba.sgcl.data::finalize",
             dataset: { "type": "ref", "ref": "postprocessed_text_data" },
-            treebank_dataset: { "type": "ref", "ref": "postprocessed_treebank_data" },
         },
 
         // Record label counts

@@ -19,6 +19,8 @@ local stringifyObject(o) = std.join('_', std.objectValues(std.mapWithKey(stringi
 // --------------------------------------------------------------------------------
 local max_length = 512;
 
+local use_parser = false;
+local use_xpos = false;
 local FROM_PRETRAINED = false;
 local hidden_size = 128;
 local num_layers = 3;
@@ -40,8 +42,8 @@ local phrase_sgcl_config = if !use_phrase then null else {
 local sla_config = if !use_sla then null else {max_distance: 4};
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
-    parser: null,
-    xpos_tagging: false,
+    parser: if use_parser then parser else null,
+    xpos_tagging: use_xpos,
     tokenizer: tokenizer,
     counts: { "type": "ref", "ref": "counts" },
     model_output_path: model_path,
