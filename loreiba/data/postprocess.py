@@ -107,7 +107,6 @@ class ExpandTreesWithSubwordEdges(Step):
                 "dependency_token_spans": Sequence(feature=Value(dtype="int32", id=None), length=-1, id=None),
             }
         )
-        print(features)
 
         return datasets.Dataset.from_generator(inner, features=features)
 
