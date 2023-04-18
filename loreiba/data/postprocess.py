@@ -6,7 +6,7 @@ import sys
 import datasets
 import more_itertools as mit
 import stanza
-from datasets import DatasetDict, Sequence, Value
+from datasets import DatasetDict, IterableDatasetDict, Sequence, Value
 from tango import Step
 from tango.common import Tqdm
 from tango.integrations.datasets import DatasetsFormat
@@ -120,7 +120,7 @@ class ExpandTreesWithSubwordEdges(Step):
 
         return datasets.Dataset.from_generator(inner, features=features)
 
-    def run(self, dataset: DatasetDict) -> DatasetDict:
+    def run(self, dataset: IterableDatasetDict) -> DatasetDict:
         dataset_dict = {}
         for split, data in dataset.items():
             dataset_dict[split] = self.process_split(split, data)

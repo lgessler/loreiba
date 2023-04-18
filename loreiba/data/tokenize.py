@@ -3,7 +3,7 @@ import shutil
 from typing import Iterable, List, Optional, Tuple
 
 import datasets
-from datasets import Dataset, DatasetDict, Sequence, Value
+from datasets import Dataset, DatasetDict, IterableDatasetDict, Sequence, Value
 from tango import Step
 from tango.common import Lazy
 from tango.integrations.datasets import DatasetsFormat
@@ -112,7 +112,7 @@ class TokenizePlus(Step):
 
     def run(
         self,
-        dataset: DatasetDict,
+        dataset: IterableDatasetDict,
         tokenizer: Lazy[Tokenizer],
         max_length: Optional[int] = None,
         token_column: str = "tokens",
