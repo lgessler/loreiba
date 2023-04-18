@@ -45,7 +45,7 @@ class Finalize(Step):
     def run(
         self, dataset: DatasetDict, treebank_dataset: Optional[DatasetDict] = None, unlabeled_per_labeled: int = 8
     ) -> DatasetDict:
-        dataset = dataset.remove_columns(["tokens", "lemmas", "upos"])
+        dataset = dataset.remove_columns(["tokens"])
 
         xpos, deprels = self._get_labels(dataset, treebank_dataset)
         features = datasets.Features(

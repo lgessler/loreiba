@@ -84,6 +84,7 @@ def extend_tree_with_subword_edges(output):
         #    td = {i: t for i, t in enumerate(f.read().strip().split("\n"))}
         print("input_ids", len(output["input_ids"]), output["input_ids"])
         raise ValueError("length of head should be equal to length of input_ids - 2")
+    return output
 
 
 @Step.register("loreiba.data.postprocess::expand_trees_with_subword_edges")
