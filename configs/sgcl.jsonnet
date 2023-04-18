@@ -77,6 +77,7 @@ local model = {
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
     sla_config: sla_config,
+    xpos_tagging: true,
     encoder: {
         type: "bert",
         tokenizer: tokenizer,
