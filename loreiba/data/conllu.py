@@ -167,17 +167,10 @@ class ReadConllu(Step):
     ) -> DatasetDict:
         features = datasets.Features(
             {
-                "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "deps": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "feats": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "idx": Value(dtype="string", id=None),
-                "lemmas": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "misc": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "text": Value(dtype="string", id=None),
                 "tokens": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "upos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "xpos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
             }
         )
 
@@ -186,17 +179,10 @@ class ReadConllu(Step):
             metadata = tl.metadata
             tl = [t for t in tl if isinstance(t["id"], int)]
             return {
-                "idx": metadata["sent_id"],
-                "text": metadata["text"],
                 "tokens": [t["form"] for t in tl],
-                "lemmas": [t["lemma"] for t in tl],
-                "upos": [t["upos"] for t in tl],
                 "xpos": [t["xpos"] for t in tl],
-                "feats": [t["feats"] for t in tl],
                 "head": [t["head"] for t in tl],
                 "deprel": [t["deprel"] for t in tl],
-                "deps": [t["deps"] for t in tl],
-                "misc": [t["misc"] for t in tl],
             }
 
         def generator(filepath):
@@ -207,8 +193,8 @@ class ReadConllu(Step):
 
             return inner
 
-        train_dataset = datasets.Dataset.from_generator(generator(train_path), features=features, streaming=True)
-        dev_dataset = datasets.Dataset.from_generator(generator(dev_path), features=features, streaming=True)
+        train_dataset = datasets.Dataset.from_generator(generator(train_path), features=features)
+        dev_dataset = datasets.Dataset.from_generator(generator(dev_path), features=features)
         self.logger.info(f"First train sentence: {train_dataset[0]}")
         self.logger.info(f"First dev sentence: {dev_dataset[0]}")
 
@@ -269,32 +255,18 @@ class ReadUDTreebank(Step):
             metadata = tl.metadata
             tl = [t for t in tl if isinstance(t["id"], int)]
             return {
-                "idx": metadata["sent_id"],
-                "text": metadata["text"],
                 "tokens": [t["form"] for t in tl],
-                "lemmas": [t["lemma"] for t in tl],
-                "upos": [t["upos"] for t in tl],
                 "xpos": [t["xpos"] for t in tl],
-                "feats": [t["feats"] for t in tl],
                 "head": [t["head"] for t in tl],
                 "deprel": [t["deprel"] for t in tl],
-                "deps": [t["deps"] for t in tl],
-                "misc": [t["misc"] for t in tl],
             }
 
         features = datasets.Features(
             {
-                "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "deps": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "feats": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "idx": Value(dtype="string", id=None),
-                "lemmas": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "misc": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "text": Value(dtype="string", id=None),
                 "tokens": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
-                "upos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
                 "xpos": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "head": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
+                "deprel": Sequence(feature=Value(dtype="string", id=None), length=-1, id=None),
             }
         )
 

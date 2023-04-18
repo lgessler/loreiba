@@ -109,11 +109,7 @@ class ExpandTreesWithSubwordEdges(Step):
             ),
         )
 
-        return datasets.Dataset.from_generator(
-            inner,
-            features=features,
-            streaming=True,
-        )
+        return datasets.Dataset.from_generator(inner, features=features)
 
     def run(self, dataset: DatasetDict) -> DatasetDict:
         dataset_dict = {}
