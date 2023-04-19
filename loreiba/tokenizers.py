@@ -84,7 +84,7 @@ def train_tokenizer_generator(
 
     def sentences():
         for s in dataset:
-            yield s["tokens"]
+            yield " ".join(s["tokens"])
 
     tokenizer.train_from_iterator(sentences(), trainer=trainer)
     if serialize_path:
