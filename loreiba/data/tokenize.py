@@ -9,7 +9,7 @@ from tango.common import Lazy
 from tango.integrations.datasets import DatasetsFormat
 from tango.integrations.transformers import Tokenizer
 
-from loreiba.tokenizers import train_tokenizer
+from loreiba.tokenizers import train_tokenizer, train_tokenizer_generator
 
 
 @Step.register("loreiba.data.tokenize::tokenize_plus")
@@ -126,11 +126,16 @@ class TrainTokenizer(Step):
     DETERMINISTIC = True
     CACHEABLE = True
 
-    def run(self, dataset: DatasetDict, model_path: str, vocab_size: Optional[int] = None) -> None:
-        sentences = dataset["train"]["tokens"]
+    def run(
+        self, dataset: DatasetDict, model_path: str, vocab_size: Optional[int] = None, generator: bool = False
+    ) -> None:
         if os.path.exists(model_path):
             self.logger.info(f"Already found model at {model_path}. Removing...")
             shutil.rmtree(model_path)
-        train_tokenizer([" ".join(s) for s in sentences], model_path, vocab_size=vocab_size)
+        if not generator:
+            sentences = dataset["train"]["tokens"]
+            train_tokenizer([" ".join(s) for s in sentences], model_path, vocab_size=vocab_size)
+        else:
+            train_tokenizer_generator(dataset["train"], vocab_size, model_path)
         # simple_train_tokenizer(sentences, model_path)
         self.logger.info(f"Wrote tokenizer to {model_path}")

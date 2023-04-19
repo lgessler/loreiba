@@ -145,6 +145,8 @@ local val_dataloader = {
             type: "loreiba.data.tokenize::train_tokenizer",
             dataset: { "type": "ref", "ref": "parsed_text_data" },
             model_path: model_path,
+            vocab_size: 30000,
+            generator: true,
         },
 
         // Tokenize input data
