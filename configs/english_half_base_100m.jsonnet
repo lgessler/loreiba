@@ -72,8 +72,8 @@ local BERT_total_instances = BERT_steps * BERT_batch_size;
 // We want a batch size of 256 (standard in the TLM lit and shown to have benefits) but the GPU memory
 // on machines I have can't handle more than 32 reliably. To get around this, use gradient accumulation:
 // https://medium.com/huggingface/training-larger-batches-practical-tips-on-1-gpu-multi-gpu-distributed-setups-ec88c3e51255
-local batch_size = 8;
-local grad_accum = 64;
+local batch_size = 4;
+local grad_accum = 128;
 local effective_batch_size = grad_accum * batch_size;
 // We do not need to correct by (BERT_batch_size / batch_size) in order to ensure we're getting through the
 // same number of training instances because each step goes through `grad_accum` microbatches
