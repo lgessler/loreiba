@@ -22,14 +22,16 @@ class Finalize(Step):
     DETERMINISTIC = True
     CACHEABLE = True
     FORMAT = DatasetsFormat()
-    VERSION = "2"
 
     def _get_labels(self, dataset, treebank_dataset):
         deprels = set()
         xpos = set()
         for split in ["train", "dev"]:
-            xpos |= set(d for s in dataset[split]["xpos"] for d in s)
-            deprels |= set(d for s in dataset[split]["deprel"] for d in s)
+            for d in dataset[split]:
+                for x in d["xpos"]:
+                    xpos.add(x)
+                for x in d["deprel"]:
+                    deprels.add(x)
         if treebank_dataset is not None:
             for split in ["train", "dev", "test"]:
                 xpos |= set(d for s in treebank_dataset[split]["xpos"] for d in s)
