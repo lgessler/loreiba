@@ -77,10 +77,13 @@ def generate_sla_mask(config: SlaConfig, head: torch.LongTensor, head_length: to
     return transformed_mask
 
 
+LARGE_NEGATIVE_FLOAT = -1.e6
+
+
 def transform_sla_mask(mask):
     """Given a mask where 1 means attend and 0 means don't attend, change 1 to 0 and 0 to -inf"""
     mask = mask.float()
-    mask[mask == 0.0] = float("-inf")
+    mask[mask == 0.0] = LARGE_NEGATIVE_FLOAT
     mask[mask == 1.0] = 0.0
     return mask
 
