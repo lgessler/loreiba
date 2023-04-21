@@ -57,6 +57,10 @@ def generate_sla_mask(config: SlaConfig, head: torch.LongTensor, head_length: to
     for b, head_map in enumerate(head_maps):
         for i in range(1, head.shape[1] - 1):
             in_range = ids_in_range(head_map, i, config.max_distance)
+            if i != 1:
+                in_range |= ids_in_range(head_map, i - 1, config.max_distance)
+            if i != head.shape[1] - 2:
+                in_range |= ids_in_range(head_map, i - 1, config.max_distance)
             for j in in_range:
                 att_mask[b, i, j] = 1
     # Ensure [CLS] is not masked
