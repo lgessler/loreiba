@@ -73,7 +73,16 @@ def generate_sla_mask(config: SlaConfig, head: torch.LongTensor, head_length: to
         att_mask[i, :, l - 1] = 1
         # Mask out rows beyond sequence length
         att_mask[i, l - 1 :] = 0
-    return att_mask
+    transformed_mask = transform_sla_mask(att_mask)
+    return transformed_mask
+
+
+def transform_sla_mask(mask):
+    """Given a mask where 1 means attend and 0 means don't attend, change 1 to 0 and 0 to -inf"""
+    mask = mask.float()
+    mask[mask == 0.0] = float("-inf")
+    mask[mask == 1.0] = 0.0
+    return mask
 
 
 def __tmp():
