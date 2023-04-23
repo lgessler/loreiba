@@ -144,7 +144,7 @@ def assess_tree_sgcl_batched(
     # Select root vectors
     root_indexes = root_indexes.unsqueeze(0).unsqueeze(-1).repeat(num_layers, 1, 1, num_hidden)
     root_zs = tokenwise_hidden_states.take_along_dim(root_indexes, dim=2) * root_mask.unsqueeze(0).repeat(
-        3, 1, 1
+        num_layers, 1, 1
     ).unsqueeze(-1)
 
     # Select positive vectors
