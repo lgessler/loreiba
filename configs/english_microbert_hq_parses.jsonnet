@@ -36,9 +36,7 @@ local tokenizer = { pretrained_model_name_or_path: model_path };
 local tree_sgcl_config = if !use_tree then null else {
     subtree_sampling_method: {type: "all"},
 };
-local phrase_sgcl_config = if !use_phrase then null else {
-    max_subtrees_per_sentence: 5,
-};
+local phrase_sgcl_config = if !use_phrase then null else {};
 local sla_config = if !use_sla then null else {max_distance: 4};
 local model = {
     type: "loreiba.sgcl.model.model::sgcl_model",
@@ -49,6 +47,7 @@ local model = {
     model_output_path: model_path,
     tree_sgcl_config: tree_sgcl_config,
     phrase_sgcl_config: phrase_sgcl_config,
+    sla_config: sla_config,
     encoder: {
         type: "bert",
         tokenizer: tokenizer,
@@ -183,7 +182,7 @@ local val_dataloader = {
             train_dataloader: train_dataloader,
             //train_epochs: num_epochs,
             train_steps: num_steps,
-            grad_accum: 8,
+            grad_accum: grad_accum,
             validate_every: validate_every,
             checkpoint_every: validate_every,
             validation_split: "dev",
