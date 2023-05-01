@@ -246,7 +246,7 @@ local val_dataloader = {
             train_dataloader: train_dataloader,
             //train_epochs: num_epochs,
             train_steps: num_steps,
-            grad_accum: 8,
+            grad_accum: grad_accum,
             validate_every: validate_every,
             checkpoint_every: validate_every,
             validation_split: "dev",
